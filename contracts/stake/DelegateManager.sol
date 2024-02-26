@@ -50,7 +50,6 @@ abstract contract DelegateManager is BaseStaker {
         uint8 multiplier = _calculateVoteMultiplier(lockBlocks);
         uint256 stakeAmount = units * DELEGATE_STAKE;
 
-
         stakeID = keccak256(abi.encodePacked(_msgSender(), delegateNonce[_msgSender()]));
         uint256 expiry = multiplier == uint8(7) ? MAX_UINT_256 : block.number + lockBlocks;
 
@@ -64,7 +63,10 @@ abstract contract DelegateManager is BaseStaker {
         });
         delegateNonce[_msgSender()]++;
 
-        fillers[stakes[stakeID].filler].delegateStakeIDs.add(stakeID);
+        require(
+            fillers[stakes[stakeID].filler].delegateStakeIDs.add(stakeID),
+            "DelegateManager: stakeID already exists"
+        );
 
         SEED.safeTransferFrom(_msgSender(), address(this), stakeAmount);
 
@@ -94,8 +96,8 @@ abstract contract DelegateManager is BaseStaker {
 
         emit VotesChanged(stakeID, oldFiller, stake.filler);
 
-        fillers[oldFiller].delegateStakeIDs.remove(stakeID);
-        fillers[stake.filler].delegateStakeIDs.add(stakeID);
+        require(fillers[oldFiller].delegateStakeIDs.remove(stakeID), "DelegateManager: stakeID not found");
+        require(fillers[stake.filler].delegateStakeIDs.add(stakeID), "DelegateManager: stakeID already exists");
     }
 
     /**
@@ -109,7 +111,7 @@ abstract contract DelegateManager is BaseStaker {
         require(stake.expiry < block.number, "DelegateManager: stake not expired");
         require(stake.owner != address(0), "DelegateManager: stake not found");
 
-        fillers[stake.filler].delegateStakeIDs.remove(stakeID);
+        require(fillers[stake.filler].delegateStakeIDs.remove(stakeID), "DelegateManager: stakeID not found");
 
         delete (stakes[stakeID]);
 
