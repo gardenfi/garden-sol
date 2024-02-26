@@ -2,7 +2,7 @@
 
 **Introduction**
 
-This repository contains the Solidity smart contracts for the Garden Finance project. These contracts are designed to facilitate decentralized Exchange, Payment channels, HTLCs, and Staking functionalities within the Ethereum ecosystem.
+This repository contains the solidity smart contracts for the Garden Finance project. These contracts are designed to facilitate payment channels, HTLCs, and staking functionalities within the ethereum ecosystem.
 
 **Smart Contract Breakdown**
 
@@ -11,8 +11,6 @@ The contracts are organized into the following directories, each containing rela
 - **Contracts:**
     - [**Flower.sol:**](./contracts/Flower.sol) This contract Follows ERC721 NFT standard and is responsible for minting Flower NFTs.
     - [**SEED.sol:**](./contracts/SEED.sol) This contract follows ERC20 standard and is the base token used across all garden decentralized applications.
-- [**dex:**](./contracts/dex/Readme.md)
-    - [**GardenDEX.sol:**](./contracts/dex/Readme.md) Decentralized Exchange to settle orders which are committed onchain.
 - [**fee:**](./contracts/fee/README.md)
     - [**GardenFEEAccount.sol:**](./contracts/fee/GardenFEEAccount.sol) This contract is used to manage the funds of a channel between a funder and a recipient using `Payment Channel` Architecture along with `HTLC`.
     - [**GardenFEEAccountFactory.sol:**](./contracts/fee/GardenFEEAccountFactory.sol) This contract is used to deploy and manage the fee channels per signer.
