@@ -50,7 +50,6 @@ abstract contract DelegateManager is BaseStaker {
         uint8 multiplier = _calculateVoteMultiplier(lockBlocks);
         uint256 stakeAmount = units * DELEGATE_STAKE;
 
-        SEED.safeTransferFrom(_msgSender(), address(this), stakeAmount);
 
         stakeID = keccak256(abi.encodePacked(_msgSender(), delegateNonce[_msgSender()]));
         uint256 expiry = multiplier == uint8(7) ? MAX_UINT_256 : block.number + lockBlocks;
@@ -65,9 +64,11 @@ abstract contract DelegateManager is BaseStaker {
         });
         delegateNonce[_msgSender()]++;
 
-        emit Staked(stakeID, stakes[stakeID].owner, stakes[stakeID].stake, stakes[stakeID].expiry);
-
         fillers[stakes[stakeID].filler].delegateStakeIDs.add(stakeID);
+
+        SEED.safeTransferFrom(_msgSender(), address(this), stakeAmount);
+
+        emit Staked(stakeID, stakes[stakeID].owner, stakes[stakeID].stake, stakes[stakeID].expiry);
 
         emit Voted(stakeID, stakes[stakeID].filler, stakes[stakeID].votes);
     }
