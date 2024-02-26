@@ -1,5 +1,6 @@
 #Temporary files
 /test-backup
+*.sarif
 
 # Hardhat files
 /cache
