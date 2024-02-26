@@ -107,6 +107,18 @@ contract GardenFEEAccountFactory {
         delete channels[recipient];
     }
 
+     /**
+     * @notice Creates a fee channel.
+     * @dev The fee channel is created by deploying a clone using the template.
+     * This function is only callable by the fee manager.
+     * @param recipient The address of the recipient.
+     * @return The address of the fee channel.
+     */
+    function feeManagerCreate(address recipient) external returns (GardenFEEAccount) {
+        require(msg.sender == feeManager, "GardenFEEAccountFactory: caller must be fee manager");
+        return _create(feeManager, recipient);
+    }
+
     /**
      * @notice Creates a fee channel.
      * @dev The fee channel is created by deploying a clone using the template.
@@ -115,18 +127,6 @@ contract GardenFEEAccountFactory {
      */
     function create() public returns (GardenFEEAccount) {
         return _create(feeManager, msg.sender);
-    }
-
-    /**
-     * @notice Creates a fee channel.
-     * @dev The fee channel is created by deploying a clone using the template.
-     * This function is only callable by the fee manager.
-     * @param recipient The address of the recipient.
-     * @return The address of the fee channel.
-     */
-    function feeManagerCreate(address recipient) public returns (GardenFEEAccount) {
-        require(msg.sender == feeManager, "GardenFEEAccountFactory: caller must be fee manager");
-        return _create(feeManager, recipient);
     }
 
     /**

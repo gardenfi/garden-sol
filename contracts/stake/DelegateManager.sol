@@ -171,7 +171,7 @@ abstract contract DelegateManager is BaseStaker {
      * @param filler The address of the filler to retrieve the vote count for.
      * @return voteCount The total number of votes delegated to the specified filler address.
      */
-    function getVotes(address filler) public view returns (uint256 voteCount) {
+    function getVotes(address filler) external view returns (uint256 voteCount) {
         bytes32[] memory delegates = fillers[filler].delegateStakeIDs._inner._values;
         uint256 delegateLength = delegates.length;
 

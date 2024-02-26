@@ -64,7 +64,7 @@ contract GardenFEEAccount is EIP712Upgradeable {
         address recipient_,
         string memory feeAccountName,
         string memory feeAccountVersion
-    ) public initializer {
+    ) external initializer {
         __EIP712_init_unchained(feeAccountName, feeAccountVersion);
         __GardenFEEAccount_init_unchained(token_, funder_, recipient_);
     }
@@ -81,14 +81,6 @@ contract GardenFEEAccount is EIP712Upgradeable {
     }
 
     /**
-     * @notice Returns the total amount of tokens held by the GardenFEEAccount.
-     * @return The total amount of tokens.
-     */
-    function totalAmount() public view returns (uint256) {
-        return token.balanceOf(address(this));
-    }
-
-    /**
      * @notice Allows a participant to close the channel and claim their funds.
      *          - The amount_ is sent to the recipient.
      *          - The remaining amount is sent to the funder.
@@ -97,7 +89,7 @@ contract GardenFEEAccount is EIP712Upgradeable {
      * @param funderSig THe sinaure of the funder for the close message.
      * @param recipientSig The signature of the recipient for the close message.
      */
-    function close(uint256 amount_, bytes memory funderSig, bytes memory recipientSig) public {
+    function close(uint256 amount_, bytes memory funderSig, bytes memory recipientSig) external {
         bytes32 id = _hashTypedDataV4(keccak256(abi.encode(CLOSE_TYPEHASH, amount_)));
         address funderSigner = id.recover(funderSig);
         address recipientSigner = id.recover(recipientSig);
@@ -132,7 +124,7 @@ contract GardenFEEAccount is EIP712Upgradeable {
         bytes[] memory secrets,
         bytes memory funderSig,
         bytes memory recipientSig
-    ) public {
+    ) external {
         require(htlcs.length == secrets.length, "GardenFEEAccount: invalid input");
         bytes32 claimID = claimHash(amount_, nonce_, htlcs);
 
@@ -170,6 +162,27 @@ contract GardenFEEAccount is EIP712Upgradeable {
     }
 
     /**
+     * @notice Allows the recipient to settle the GardenFEEAccount.
+     *          - The amount is sent to the recipient.
+     *          - The remaining amount is sent to the funder.
+     *          - The recipient can only settle the channel after the expiration block.
+     */
+    function settle() external {
+        require(expiration > 0, "GardenFEEAccount: no claim");
+        require(expiration <= block.number, "GardenFEEAccount: claim not expired");
+
+        closeChannel(amount);
+    }
+
+    /**
+     * @notice Returns the total amount of tokens held by the GardenFEEAccount.
+     * @return The total amount of tokens.
+     */
+    function totalAmount() public view returns (uint256) {
+        return token.balanceOf(address(this));
+    }
+
+    /**
      * @notice Generates the hash to be signed by the participants to agree on claim messages.
      * @param amount_ The amount to be claimed.
      * @param nonce_ The nonce value for the claim.
@@ -194,19 +207,6 @@ contract GardenFEEAccount is EIP712Upgradeable {
             _hashTypedDataV4(
                 keccak256(abi.encode(CLAIM_HTLC_TYPEHASH, nonce_, amount_, keccak256(abi.encodePacked(htlcHashes))))
             );
-    }
-
-    /**
-     * @notice Allows the recipient to settle the GardenFEEAccount.
-     *          - The amount is sent to the recipient.
-     *          - The remaining amount is sent to the funder.
-     *          - The recipient can only settle the channel after the expiration block.
-     */
-    function settle() public {
-        require(expiration > 0, "GardenFEEAccount: no claim");
-        require(expiration <= block.number, "GardenFEEAccount: claim not expired");
-
-        closeChannel(amount);
     }
 
     /**
