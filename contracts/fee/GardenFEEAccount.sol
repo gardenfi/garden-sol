@@ -128,7 +128,7 @@ contract GardenFEEAccount is EIP712Upgradeable {
         require(htlcs.length == secrets.length, "GardenFEEAccount: invalid input");
         bytes32 claimID = claimHash(amount_, nonce_, htlcs);
 
-        uint256 localSecretsProvided;
+        uint256 localSecretsProvided = 0;
         for (uint256 i = 0; i < htlcs.length; i++) {
             if (htlcs[i].timeLock > block.number && sha256(secrets[i]) == htlcs[i].secretHash) {
                 localSecretsProvided++;
