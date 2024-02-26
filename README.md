@@ -16,8 +16,6 @@ The contracts are organized into the following directories, each containing rela
     - [**GardenFEEAccountFactory.sol:**](./contracts/fee/GardenFEEAccountFactory.sol) This contract is used to deploy and manage the fee channels per signer.
 - [**htlc:**](./contracts/htlc/Readme.md)
     - [**GardenHTLC.sol:**](./contracts/htlc/GardenHTLC.sol) This contract is used to settle an order which is committed offchain.
-- **mock:**
-    - **WBTC.sol:** token contract to mock WBTC.
 - [**stake:**](./contracts/stake/README.md)
     - [**BaseStaker.sol:**](./contracts/stake/BaseStaker.sol) Serves as Base Class for GardenStaker, Contains all State for FillerManager and DelegateManager.
     - [**DelegateManager.sol:**](./contracts/stake/DelegateManager.sol) This contract is responsible for managing the delegation of voting power to fillers.
