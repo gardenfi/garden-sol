@@ -110,9 +110,9 @@ abstract contract DelegateManager is BaseStaker {
 
         fillers[stake.filler].delegateStakeIDs.remove(stakeID);
 
-        SEED.safeTransfer(stake.owner, stake.stake);
-
         delete (stakes[stakeID]);
+
+        SEED.safeTransfer(stake.owner, stake.stake);
 
         emit StakeRefunded(stakeID);
     }

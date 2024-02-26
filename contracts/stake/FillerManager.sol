@@ -26,7 +26,7 @@ abstract contract FillerManager is BaseStaker {
      * @notice Registers a filler by transferring the `FILLER_STAKE` amount of tokens to the contract.
      * Only non-registered fillers can call this function.
      * Emits a FillerRegistered event upon successful registration.
-     * @dev 
+     * @dev
      * - Transfers the FILLER_STAKE amount of tokens from the caller to the contract.
      * - Sets the stake amount of the caller to FILLER_STAKE.
      * - Grants the FILLER role to the caller.
@@ -34,11 +34,11 @@ abstract contract FillerManager is BaseStaker {
     function register() external {
         require(fillers[_msgSender()].stake == 0, "FillerManager: already registered");
 
-        SEED.safeTransferFrom(_msgSender(), address(this), FILLER_STAKE);
-
         fillers[_msgSender()].stake = FILLER_STAKE;
 
         _grantRole(FILLER, _msgSender());
+
+        SEED.safeTransferFrom(_msgSender(), address(this), FILLER_STAKE);
 
         emit FillerRegistered(_msgSender());
     }
@@ -71,9 +71,9 @@ abstract contract FillerManager is BaseStaker {
         require(filler.deregisteredAt != 0, "FillerManager: not registered");
         require(filler.deregisteredAt + FILLER_COOL_DOWN < block.number, "FillerManager: cooldown not passed");
 
-        SEED.safeTransfer(filler_, FILLER_STAKE);
-
         delete (fillers[filler_]);
+
+        SEED.safeTransfer(filler_, FILLER_STAKE);
 
         emit FillerRefunded(filler_);
     }
