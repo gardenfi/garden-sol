@@ -55,8 +55,13 @@ contract GardenFEEAccount is EIP712Upgradeable {
     uint256 public nonce;
     uint256 public expiration;
     uint256 public secretsProvided;
+    mapping(bytes => bool) public secretsClaimed;
 
     uint256 private constant TWO_DAYS = 2 * 7200;
+
+    function initialize() external {
+        _disableInitializers();
+    }
 
     function __GardenFEEAccount_init(
         IERC20Upgradeable token_,
@@ -128,12 +133,21 @@ contract GardenFEEAccount is EIP712Upgradeable {
         require(htlcs.length == secrets.length, "GardenFEEAccount: invalid input");
         bytes32 claimID = claimHash(amount_, nonce_, htlcs);
 
+        if (nonce == nonce_ && expiration != 0) {
+            amount_ = amount;
+        }
+
         uint256 localSecretsProvided = 0;
         for (uint256 i = 0; i < htlcs.length; i++) {
-            if (htlcs[i].timeLock > block.number && sha256(secrets[i]) == htlcs[i].secretHash) {
+            if (!secretsClaimed[secrets[i]]) {
+                if (htlcs[i].timeLock > block.number && sha256(secrets[i]) == htlcs[i].secretHash) {
+                    localSecretsProvided++;
+                    secretsClaimed[secrets[i]] = true;
+                    amount_ += htlcs[i].sendAmount;
+                    amount_ -= htlcs[i].recieveAmount;
+                }
+            } else {
                 localSecretsProvided++;
-                amount_ += htlcs[i].sendAmount;
-                amount_ -= htlcs[i].recieveAmount;
             }
         }
 
