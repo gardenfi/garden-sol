@@ -1,60 +1,60 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.18;
 
-import "@openzeppelin/contracts-upgradeable/utils/cryptography/ECDSAUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/utils/cryptography/EIP712Upgradeable.sol";
+import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/proxy/utils/Initializable.sol";
 
-interface IGardenFEEAccountFactory {
+interface IGardenFeeAccountFactory {
     function closed(address recipient) external;
 
     function claimed(address recipient, uint256 amount, uint256 nonce, uint256 expiration) external;
 }
 
 /**
- * @title GardenFEEAccount
- * @author Garden Finance
- * @notice The GardenFEEAccount contract is used to manage the funds of a channel between a funder and a recipient.
- * It allows the funder and recipient to close the channel and claim the funds.
- * It also allows the recipient to settle the channel.
- * @dev A templete of contract is deployed by the factory.
- * Clones are created by the factory.
+ * @title   GardenFEEAccount
+ * @author  Garden Finance
+ * @notice  The GardenFEEAccount contract is used to manage the funds of a channel between a funder and a recipient.
+ *          It allows the funder and recipient to close the channel and claim the funds.
+ *          It also allows the recipient to settle the channel.
+ * @dev     A template of contract is deployed by the factory.
+ *          Clones are created by the factory.
  */
-contract GardenFEEAccount is EIP712Upgradeable {
-    using ECDSAUpgradeable for bytes32;
-    using SafeERC20Upgradeable for IERC20Upgradeable;
+contract GardenFeeAccount is EIP712, Initializable {
+    using ECDSA for bytes32;
+    using SafeERC20 for IERC20;
 
     struct HTLC {
         bytes32 secretHash;
         uint256 timeLock;
         uint256 sendAmount;
-        uint256 recieveAmount;
+        uint256 receiveAmount;
     }
 
     bytes32 private constant CLOSE_TYPEHASH = keccak256("Close(uint256 amount)");
-
     bytes32 private constant CLAIM_HTLC_TYPEHASH =
         keccak256(
             abi.encodePacked(
                 "Claim(uint256 nonce,uint256 amount,HTLC[] htlcs)",
-                "HTLC(bytes32 secretHash,uint256 timeLock,uint256 sendAmount,uint256 recieveAmount)"
+                "HTLC(bytes32 secretHash,uint256 timeLock,uint256 sendAmount,uint256 receiveAmount)"
             )
         );
-
     bytes32 private constant HTLC_TYPEHASH =
-        keccak256("HTLC(bytes32 secretHash,uint256 timeLock,uint256 sendAmount,uint256 recieveAmount)");
+        keccak256("HTLC(bytes32 secretHash,uint256 timeLock,uint256 sendAmount,uint256 receiveAmount)");
 
     // Are set when the channel is created
-    IERC20Upgradeable public token;
-    address public funder;
-    address public recipient;
-    IGardenFEEAccountFactory public factory;
+    IERC20 public immutable token;
+    address public immutable funder;
+    address public immutable recipient;
+    IGardenFEEAccountFactory public immutable factory;
 
     // Are set when a claim is made
     uint256 public amount;
     uint256 public nonce;
     uint256 public expiration;
     uint256 public secretsProvided;
+
     mapping(bytes => bool) public secretsClaimed;
 
     uint256 private constant TWO_DAYS = 2 * 7200;
@@ -64,7 +64,7 @@ contract GardenFEEAccount is EIP712Upgradeable {
     }
 
     function __GardenFEEAccount_init(
-        IERC20Upgradeable token_,
+        IERC20 token_,
         address funder_,
         address recipient_,
         string memory feeAccountName,
@@ -75,7 +75,7 @@ contract GardenFEEAccount is EIP712Upgradeable {
     }
 
     function __GardenFEEAccount_init_unchained(
-        IERC20Upgradeable token_,
+        IERC20 token_,
         address funder_,
         address recipient_
     ) internal onlyInitializing {
@@ -86,13 +86,14 @@ contract GardenFEEAccount is EIP712Upgradeable {
     }
 
     /**
-     * @notice Allows a participant to close the channel and claim their funds.
+     * @notice  Allows a participant to close the channel and claim their funds.
      *          - The amount_ is sent to the recipient.
      *          - The remaining amount is sent to the funder.
-     * @dev The funder and recipient must sign the close message.
-     * @param amount_ The amount of tokens to be closed with.
-     * @param funderSig THe sinaure of the funder for the close message.
-     * @param recipientSig The signature of the recipient for the close message.
+     * @dev     The funder and recipient must sign the close message.
+     * 
+     * @param amount_       The amount of tokens to be closed with.
+     * @param funderSig     The signature of the funder for the close message.
+     * @param recipientSig  The signature of the recipient for the close message.
      */
     function close(uint256 amount_, bytes memory funderSig, bytes memory recipientSig) external {
         bytes32 id = _hashTypedDataV4(keccak256(abi.encode(CLOSE_TYPEHASH, amount_)));
@@ -106,21 +107,22 @@ contract GardenFEEAccount is EIP712Upgradeable {
     }
 
     /**
-     * @notice Allows a participant to claim funds from the GardenFEEAccount.
+     * @notice  Allows a participant to claim funds from the GardenFEEAccount.
      *          - The claim can only be made if the provided secrets match the corresponding HTLCs and the amount is valid.
      *          - The amount is updated to the new amount.
      *          - The nonce is updated to the new nonce.
      *          - The funder and recipient must sign the claim message.
      *          - The expiration is updated to the current block number plus two days.
      *          - The secretsProvided is updated to the number of secrets provided.
-     *          - A claim can be overrided by a new claim with the same nonce and more secrets.
-     *          - A claim can be overrided by a new claim with the higher nonce.
-     * @param amount_ The amount of tokens to be claimed.
-     * @param nonce_ The nonce value for the claim message.
-     * @param htlcs The array of HTLCs in the claim.
-     * @param secrets The array of secrets corresponding to the HTLCs.
-     * @param funderSig The signature of the funder for the claim message.
-     * @param recipientSig The signature of the recipient for the claim message.
+     *          - A claim can be overridden by a new claim with the same nonce and more secrets.
+     *          - A claim can be overridden by a new claim with the higher nonce.
+     * 
+     * @param amount_       The amount of tokens to be claimed.
+     * @param nonce_        The nonce value for the claim message.
+     * @param htlcs         The array of HTLCs in the claim.
+     * @param secrets       The array of secrets corresponding to the HTLCs.
+     * @param funderSig     The signature of the funder for the claim message.
+     * @param recipientSig  The signature of the recipient for the claim message.
      */
     function claim(
         uint256 amount_,
@@ -176,7 +178,7 @@ contract GardenFEEAccount is EIP712Upgradeable {
     }
 
     /**
-     * @notice Allows the recipient to settle the GardenFEEAccount.
+     * @notice  Allows the recipient to settle the GardenFEEAccount.
      *          - The amount is sent to the recipient.
      *          - The remaining amount is sent to the funder.
      *          - The recipient can only settle the channel after the expiration block.
@@ -189,18 +191,20 @@ contract GardenFEEAccount is EIP712Upgradeable {
     }
 
     /**
-     * @notice Returns the total amount of tokens held by the GardenFEEAccount.
-     * @return The total amount of tokens.
+     * @notice  Returns the total amount of tokens held by the GardenFEEAccount.
+     * 
+     * @return  The total amount of tokens.
      */
     function totalAmount() public view returns (uint256) {
         return token.balanceOf(address(this));
     }
 
     /**
-     * @notice Generates the hash to be signed by the participants to agree on claim messages.
-     * @param amount_ The amount to be claimed.
-     * @param nonce_ The nonce value for the claim.
-     * @param htlcs The array of HTLCs.
+     * @notice  Generates the hash to be signed by the participants to agree on claim messages.
+     * 
+     * @param amount_   The amount to be claimed.
+     * @param nonce_    The nonce value for the claim.
+     * @param htlcs     The array of HTLCs.
      */
     function claimHash(uint256 amount_, uint256 nonce_, HTLC[] memory htlcs) public view returns (bytes32) {
         bytes32[] memory htlcHashes = new bytes32[](htlcs.length);
