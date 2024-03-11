@@ -134,7 +134,7 @@ abstract contract DelegateManager is BaseStaker {
         require(stake.expiry < block.number, "DelegateManager: stake not expired");
 
         uint8 multiplier = _calculateVoteMultiplier(newLockBlocks);
-        stake.expiry = block.number + newLockBlocks;
+        stake.expiry = multiplier == uint8(7) ? MAX_UINT_256 : block.number + newLockBlocks;
         stake.votes = multiplier * stake.units;
 
         stakes[stakeID] = stake;
