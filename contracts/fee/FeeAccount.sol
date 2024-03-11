@@ -2,26 +2,25 @@
 pragma solidity ^0.8.18;
 
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-import "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/cryptography/EIP712Upgradeable.sol";
 
-interface IGardenFeeAccountFactory {
+interface IFeeAccountFactory {
     function closed(address recipient) external;
 
     function claimed(address recipient, uint256 amount, uint256 nonce, uint256 expiration) external;
 }
 
 /**
- * @title   GardenFEEAccount
- * @author  Garden Finance
- * @notice  The GardenFEEAccount contract is used to manage the funds of a channel between a funder and a recipient.
+ * @title   FeeAccount
+ * @author  Catalog
+ * @notice  The FeeAccount contract is used to manage the funds of a channel between a funder and a recipient.
  *          It allows the funder and recipient to close the channel and claim the funds.
  *          It also allows the recipient to settle the channel.
  * @dev     A template of contract is deployed by the factory.
  *          Clones are created by the factory.
  */
-contract GardenFeeAccount is EIP712, Initializable {
+contract FeeAccount is EIP712Upgradeable {
     using ECDSA for bytes32;
     using SafeERC20 for IERC20;
 
@@ -44,10 +43,10 @@ contract GardenFeeAccount is EIP712, Initializable {
         keccak256("HTLC(bytes32 secretHash,uint256 timeLock,uint256 sendAmount,uint256 receiveAmount)");
 
     // Are set when the channel is created
-    IERC20 public immutable token;
-    address public immutable funder;
-    address public immutable recipient;
-    IGardenFEEAccountFactory public immutable factory;
+    IERC20 public token;
+    address public funder;
+    address public recipient;
+    IFeeAccountFactory public factory;
 
     // Are set when a claim is made
     uint256 public amount;
@@ -63,7 +62,7 @@ contract GardenFeeAccount is EIP712, Initializable {
         _disableInitializers();
     }
 
-    function __GardenFEEAccount_init(
+    function __FeeAccount_init(
         IERC20 token_,
         address funder_,
         address recipient_,
@@ -71,10 +70,10 @@ contract GardenFeeAccount is EIP712, Initializable {
         string memory feeAccountVersion
     ) external initializer {
         __EIP712_init_unchained(feeAccountName, feeAccountVersion);
-        __GardenFEEAccount_init_unchained(token_, funder_, recipient_);
+        __FeeAccount_init_unchained(token_, funder_, recipient_);
     }
 
-    function __GardenFEEAccount_init_unchained(
+    function __FeeAccount_init_unchained(
         IERC20 token_,
         address funder_,
         address recipient_
@@ -82,7 +81,7 @@ contract GardenFeeAccount is EIP712, Initializable {
         token = token_;
         funder = funder_;
         recipient = recipient_;
-        factory = IGardenFEEAccountFactory(msg.sender);
+        factory = IFeeAccountFactory(msg.sender);
     }
 
     /**
@@ -90,7 +89,7 @@ contract GardenFeeAccount is EIP712, Initializable {
      *          - The amount_ is sent to the recipient.
      *          - The remaining amount is sent to the funder.
      * @dev     The funder and recipient must sign the close message.
-     * 
+     *
      * @param amount_       The amount of tokens to be closed with.
      * @param funderSig     The signature of the funder for the close message.
      * @param recipientSig  The signature of the recipient for the close message.
@@ -100,14 +99,14 @@ contract GardenFeeAccount is EIP712, Initializable {
         address funderSigner = id.recover(funderSig);
         address recipientSigner = id.recover(recipientSig);
 
-        require(funderSigner == funder, "GardenFEEAccount: invalid funder signature");
-        require(recipientSigner == recipient, "GardenFEEAccount: invalid recipient signature");
+        require(funderSigner == funder, "FeeAccount: invalid funder signature");
+        require(recipientSigner == recipient, "FeeAccount: invalid recipient signature");
 
         closeChannel(amount_);
     }
 
     /**
-     * @notice  Allows a participant to claim funds from the GardenFEEAccount.
+     * @notice  Allows a participant to claim funds from the FeeAccount.
      *          - The claim can only be made if the provided secrets match the corresponding HTLCs and the amount is valid.
      *          - The amount is updated to the new amount.
      *          - The nonce is updated to the new nonce.
@@ -116,7 +115,7 @@ contract GardenFeeAccount is EIP712, Initializable {
      *          - The secretsProvided is updated to the number of secrets provided.
      *          - A claim can be overridden by a new claim with the same nonce and more secrets.
      *          - A claim can be overridden by a new claim with the higher nonce.
-     * 
+     *
      * @param amount_       The amount of tokens to be claimed.
      * @param nonce_        The nonce value for the claim message.
      * @param htlcs         The array of HTLCs in the claim.
@@ -132,7 +131,7 @@ contract GardenFeeAccount is EIP712, Initializable {
         bytes memory funderSig,
         bytes memory recipientSig
     ) external {
-        require(htlcs.length == secrets.length, "GardenFEEAccount: invalid input");
+        require(htlcs.length == secrets.length, "FeeAccount: invalid input");
         bytes32 claimID = claimHash(amount_, nonce_, htlcs);
 
         if (nonce == nonce_ && expiration != 0) {
@@ -146,27 +145,27 @@ contract GardenFeeAccount is EIP712, Initializable {
                     localSecretsProvided++;
                     secretsClaimed[secrets[i]] = true;
                     amount_ += htlcs[i].sendAmount;
-                    amount_ -= htlcs[i].recieveAmount;
+                    amount_ -= htlcs[i].receiveAmount;
                 }
             } else {
                 localSecretsProvided++;
             }
         }
 
-        require(amount_ <= totalAmount(), "GardenFEEAccount: invalid amount");
+        require(amount_ <= totalAmount(), "FeeAccount: invalid amount");
         if (expiration != 0) {
             // a claim exists, so should satisfy override conditions
             require(
                 nonce_ > nonce || (nonce_ == nonce && localSecretsProvided > secretsProvided),
-                "GardenFEEAccount: override conditions not met"
+                "FeeAccount: override conditions not met"
             );
         }
 
         // verify funder and recipient signatures
         address funderSigner = claimID.recover(funderSig);
         address recipientSigner = claimID.recover(recipientSig);
-        require(funderSigner == funder, "GardenFEEAccount: invalid funder signature");
-        require(recipientSigner == recipient, "GardenFEEAccount: invalid recipient signature");
+        require(funderSigner == funder, "FeeAccount: invalid funder signature");
+        require(recipientSigner == recipient, "FeeAccount: invalid recipient signature");
 
         // update global claim state
         secretsProvided = localSecretsProvided;
@@ -178,21 +177,21 @@ contract GardenFeeAccount is EIP712, Initializable {
     }
 
     /**
-     * @notice  Allows the recipient to settle the GardenFEEAccount.
+     * @notice  Allows the recipient to settle the FeeAccount.
      *          - The amount is sent to the recipient.
      *          - The remaining amount is sent to the funder.
      *          - The recipient can only settle the channel after the expiration block.
      */
     function settle() external {
-        require(expiration > 0, "GardenFEEAccount: no claim");
-        require(expiration <= block.number, "GardenFEEAccount: claim not expired");
+        require(expiration > 0, "FeeAccount: no claim");
+        require(expiration <= block.number, "FeeAccount: claim not expired");
 
         closeChannel(amount);
     }
 
     /**
-     * @notice  Returns the total amount of tokens held by the GardenFEEAccount.
-     * 
+     * @notice  Returns the total amount of tokens held by the FeeAccount.
+     *
      * @return  The total amount of tokens.
      */
     function totalAmount() public view returns (uint256) {
@@ -201,7 +200,7 @@ contract GardenFeeAccount is EIP712, Initializable {
 
     /**
      * @notice  Generates the hash to be signed by the participants to agree on claim messages.
-     * 
+     *
      * @param amount_   The amount to be claimed.
      * @param nonce_    The nonce value for the claim.
      * @param htlcs     The array of HTLCs.
@@ -216,7 +215,7 @@ contract GardenFeeAccount is EIP712, Initializable {
                     htlcs[i].secretHash,
                     htlcs[i].timeLock,
                     htlcs[i].sendAmount,
-                    htlcs[i].recieveAmount
+                    htlcs[i].receiveAmount
                 )
             );
         }
@@ -238,6 +237,6 @@ contract GardenFeeAccount is EIP712, Initializable {
 
         factory.closed(recipient);
 
-        selfdestruct(payable(recipient));
+        selfdestruct(payable(funder));
     }
 }
