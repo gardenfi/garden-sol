@@ -26,7 +26,7 @@ contract FeeAccount is EIP712Upgradeable {
 
     struct HTLC {
         bytes32 secretHash;
-        uint256 timeLock;
+        uint256 expiry;
         uint256 sendAmount;
         uint256 receiveAmount;
     }
@@ -36,11 +36,11 @@ contract FeeAccount is EIP712Upgradeable {
         keccak256(
             abi.encodePacked(
                 "Claim(uint256 nonce,uint256 amount,HTLC[] htlcs)",
-                "HTLC(bytes32 secretHash,uint256 timeLock,uint256 sendAmount,uint256 receiveAmount)"
+                "HTLC(bytes32 secretHash,uint256 expiry,uint256 sendAmount,uint256 receiveAmount)"
             )
         );
     bytes32 private constant HTLC_TYPEHASH =
-        keccak256("HTLC(bytes32 secretHash,uint256 timeLock,uint256 sendAmount,uint256 receiveAmount)");
+        keccak256("HTLC(bytes32 secretHash,uint256 expiry,uint256 sendAmount,uint256 receiveAmount)");
 
     // Are set when the channel is created
     IERC20 public token;
@@ -141,7 +141,7 @@ contract FeeAccount is EIP712Upgradeable {
         uint256 localSecretsProvided = 0;
         for (uint256 i = 0; i < htlcs.length; i++) {
             if (!secretsClaimed[secrets[i]]) {
-                if (htlcs[i].timeLock > block.number && sha256(secrets[i]) == htlcs[i].secretHash) {
+                if (htlcs[i].expiry > block.number && sha256(secrets[i]) == htlcs[i].secretHash) {
                     localSecretsProvided++;
                     secretsClaimed[secrets[i]] = true;
                     amount_ += htlcs[i].sendAmount;
@@ -213,7 +213,7 @@ contract FeeAccount is EIP712Upgradeable {
                 abi.encode(
                     HTLC_TYPEHASH,
                     htlcs[i].secretHash,
-                    htlcs[i].timeLock,
+                    htlcs[i].expiry,
                     htlcs[i].sendAmount,
                     htlcs[i].receiveAmount
                 )

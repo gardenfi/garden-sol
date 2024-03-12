@@ -25,7 +25,7 @@ describe("--- Fee Account ---", () => {
 		],
 		HTLC: [
 			{ name: "secretHash", type: "bytes32" },
-			{ name: "timeLock", type: "uint256" },
+			{ name: "expiry", type: "uint256" },
 			{ name: "sendAmount", type: "uint256" },
 			{ name: "receiveAmount", type: "uint256" },
 		],
@@ -280,19 +280,19 @@ describe("--- Fee Account ---", () => {
 				htlcs: [
 					{
 						secretHash: ethers.sha256(secret1),
-						timeLock: currentBlock + 10000,
+						expiry: currentBlock + 10000,
 						sendAmount: 1000,
 						receiveAmount: 0,
 					},
 					{
 						secretHash: ethers.sha256(secret2),
-						timeLock: currentBlock + 1000,
+						expiry: currentBlock + 1000,
 						sendAmount: 0,
 						receiveAmount: 1000,
 					},
 					{
 						secretHash: ethers.sha256(secret3),
-						timeLock: currentBlock + 100,
+						expiry: currentBlock + 100,
 						sendAmount: 1000,
 						receiveAmount: 0,
 					},
@@ -413,13 +413,13 @@ describe("--- Fee Account ---", () => {
 				htlcs: [
 					{
 						secretHash: ethers.sha256(secret1),
-						timeLock: currentBlock + 10000,
+						expiry: currentBlock + 10000,
 						sendAmount: 1000,
 						receiveAmount: 0,
 					},
 					{
 						secretHash: ethers.sha256(secret3),
-						timeLock: currentBlock + 100,
+						expiry: currentBlock + 100,
 						sendAmount: 1000,
 						receiveAmount: 0,
 					},
@@ -454,7 +454,7 @@ describe("--- Fee Account ---", () => {
 				htlcs: [
 					{
 						secretHash: ethers.sha256(secret1),
-						timeLock: currentBlock + 10000,
+						expiry: currentBlock + 10000,
 						sendAmount: ethers.parseEther("0.5"),
 						receiveAmount: 0,
 					},
@@ -489,7 +489,7 @@ describe("--- Fee Account ---", () => {
 				htlcs: [
 					{
 						secretHash: ethers.sha256(secret1),
-						timeLock: currentBlock + 10000,
+						expiry: currentBlock + 10000,
 						sendAmount: 0,
 						receiveAmount: ethers.parseEther("0.5"),
 					},
