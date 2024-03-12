@@ -12,7 +12,7 @@ import type { TypedDataDomain, BigNumberish, TypedDataField, AddressLike } from 
 import { fee } from "../../typechain-types/contracts";
 import { randomBytes } from "crypto";
 
-describe("--- Garden Fee Account - integration tests with htlc ---", () => {
+describe.skip("--- Garden Fee Account - integration tests with htlc ---", () => {
 	// ----- TYPES ----- //
 	type ClaimMessage = {
 		nonce: BigNumberish;

@@ -12,7 +12,7 @@ interface IFeeAccountFactory {
 }
 
 /**
- * @title   FeeAccount
+ * @title   Fee Account
  * @author  Catalog
  * @notice  The FeeAccount contract is used to manage the funds of a channel between a funder and a recipient.
  *          It allows the funder and recipient to close the channel and claim the funds.

@@ -7,7 +7,7 @@ import "@openzeppelin/contracts/interfaces/IERC20.sol";
 import "./FeeAccount.sol";
 
 /**
- * @title   FeeAccountFactory
+ * @title   Fee Account Factory
  * @author  Catalog
  * @notice  The FeeAccountFactory contract is used to deploy and manage the fee channels.
  *          It allows the funder and recipient to create the channel.

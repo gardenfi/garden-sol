@@ -1,20 +1,18 @@
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
+import { mine } from "@nomicfoundation/hardhat-network-helpers";
 import { expect } from "chai";
 import { ethers } from "hardhat";
-
-import type { GardenFEEAccount, GardenFEEAccountFactory, SEED } from "../../typechain-types";
-import type { TypedDataDomain, BigNumberish, TypedDataField, AddressLike } from "ethers";
 import { randomBytes } from "crypto";
-import { mine } from "@nomicfoundation/hardhat-network-helpers";
-import { fee } from "../../typechain-types/contracts";
 
-describe("--- Garden Fee Account ---", () => {
+import type { FeeAccount, FeeAccountFactory, SEED } from "../../typechain-types";
+import type { TypedDataDomain, BigNumberish, TypedDataField, AddressLike } from "ethers";
+
+describe("--- Fee Account ---", () => {
 	type ClaimMessage = {
 		nonce: BigNumberish;
 		amount: BigNumberish;
-		htlcs: GardenFEEAccount.HTLCStruct[];
+		htlcs: FeeAccount.HTLCStruct[];
 	};
-
 	type CloseMessage = {
 		amount: BigNumberish;
 	};
@@ -29,10 +27,9 @@ describe("--- Garden Fee Account ---", () => {
 			{ name: "secretHash", type: "bytes32" },
 			{ name: "timeLock", type: "uint256" },
 			{ name: "sendAmount", type: "uint256" },
-			{ name: "recieveAmount", type: "uint256" },
+			{ name: "receiveAmount", type: "uint256" },
 		],
 	};
-
 	const CLOSE_TYPES: Record<string, TypedDataField[]> = {
 		Close: [{ name: "amount", type: "uint256" }],
 	};
@@ -45,23 +42,23 @@ describe("--- Garden Fee Account ---", () => {
 
 	let seed: SEED;
 
-	let gardenFeeAccountFactory: GardenFEEAccountFactory;
+	let feeAccountFactory: FeeAccountFactory;
 
 	let aliceDOMAIN: TypedDataDomain;
-	let aliceGardenFEEAccountAddress: AddressLike;
-	let aliceGardenFEEAccount: GardenFEEAccount;
+	let aliceFeeAccountAddress: AddressLike;
+	let aliceFeeAccount: FeeAccount;
 
 	let bobDOMAIN: TypedDataDomain;
-	let bobGardenFEEAccountAddress: AddressLike;
-	let bobGardenFEEAccount: GardenFEEAccount;
+	let bobFeeAccountAddress: AddressLike;
+	let bobFeeAccount: FeeAccount;
 
 	let charlieDOMAIN: TypedDataDomain;
-	let charlieGardenFEEAccountAddress: AddressLike;
-	let charlieGardenFEEAccount: GardenFEEAccount;
+	let charlieFeeAccountAddress: AddressLike;
+	let charlieFeeAccount: FeeAccount;
 
 	let davidDOMAIN: TypedDataDomain;
-	let davidGardenFEEAccountAddress: AddressLike;
-	let davidGardenFEEAccount: GardenFEEAccount;
+	let davidFeeAccountAddress: AddressLike;
+	let davidFeeAccount: FeeAccount;
 
 	before(async () => {
 		[feeManager, alice, bob, charlie, david] = await ethers.getSigners();
@@ -70,16 +67,14 @@ describe("--- Garden Fee Account ---", () => {
 		seed = (await SeedFactory.deploy()) as SEED;
 		seed.waitForDeployment();
 
-		const GardenFEEAccountFactory = await ethers.getContractFactory(
-			"GardenFEEAccountFactory"
-		);
-		gardenFeeAccountFactory = (await GardenFEEAccountFactory.deploy(
+		const FeeAccountFactoryFactory = await ethers.getContractFactory("FeeAccountFactory");
+		feeAccountFactory = (await FeeAccountFactoryFactory.deploy(
 			await seed.getAddress(),
 			feeManager.address,
-			"GardenFEEAccount",
+			"FeeAccount",
 			"1"
-		)) as GardenFEEAccountFactory;
-		gardenFeeAccountFactory.waitForDeployment();
+		)) as FeeAccountFactory;
+		feeAccountFactory.waitForDeployment();
 	});
 
 	describe("- Pre-Conditons -", () => {
@@ -104,95 +99,84 @@ describe("--- Garden Fee Account ---", () => {
 		});
 	});
 
-	describe("- GardenFEEAccount - Create -", () => {
-		it("User should not able to settle GardenFEEAccount with before creation.", async () => {
-			await expect(gardenFeeAccountFactory.connect(alice).settle(alice.address)).to.be
-				.reverted;
+	describe("- FeeAccount - Create -", () => {
+		it("User should not able to settle FeeAccount with before creation.", async () => {
+			await expect(feeAccountFactory.connect(alice).settle(alice.address)).to.be.reverted;
 		});
 
 		it("User should not able to emit claim event without creation.", async () => {
 			await expect(
-				gardenFeeAccountFactory.connect(alice).claimed(feeManager.address, 0, 0, 0)
-			).to.be.revertedWith("GardenFEEAccountFactory: caller must be fee channel");
+				feeAccountFactory.connect(alice).claimed(feeManager.address, 0, 0, 0)
+			).to.be.revertedWith("FeeAccountFactory: caller must be fee channel");
 		});
 
 		it("User should not able to emit close event without creation.", async () => {
 			await expect(
-				gardenFeeAccountFactory.connect(alice).closed(feeManager.address)
-			).to.be.revertedWith("GardenFEEAccountFactory: caller must be fee channel");
+				feeAccountFactory.connect(alice).closed(feeManager.address)
+			).to.be.revertedWith("FeeAccountFactory: caller must be fee channel");
 		});
 
-		it("User should able to create GardenFEEAccount.", async () => {
+		it("User should able to create FeeAccount.", async () => {
 			// --- Alice --- //
-			aliceGardenFEEAccountAddress = await gardenFeeAccountFactory
-				.connect(alice)
-				.create.staticCall();
+			aliceFeeAccountAddress = await feeAccountFactory.connect(alice).create.staticCall();
 
-			await expect(gardenFeeAccountFactory.connect(alice).create()).to.emit(
-				gardenFeeAccountFactory,
+			await expect(feeAccountFactory.connect(alice).create()).to.emit(
+				feeAccountFactory,
 				"Created"
 			);
 
-			aliceGardenFEEAccount = await ethers.getContractAt(
-				"GardenFEEAccount",
-				aliceGardenFEEAccountAddress
-			);
+			aliceFeeAccount = await ethers.getContractAt("FeeAccount", aliceFeeAccountAddress);
 
 			aliceDOMAIN = {
-				name: "GardenFEEAccount",
+				name: "FeeAccount",
 				version: "1",
 				chainId: (await ethers.provider.getNetwork()).chainId,
-				verifyingContract: aliceGardenFEEAccountAddress.toString(),
+				verifyingContract: aliceFeeAccountAddress.toString(),
 			};
 
-			expect(await aliceGardenFEEAccount.funder()).to.equal(feeManager.address);
-			expect(await aliceGardenFEEAccount.recipient()).to.equal(alice.address);
+			expect(await aliceFeeAccount.funder()).to.equal(feeManager.address);
+			expect(await aliceFeeAccount.recipient()).to.equal(alice.address);
 
 			// --- Bob --- //
-			bobGardenFEEAccountAddress = await gardenFeeAccountFactory
-				.connect(bob)
-				.create.staticCall();
+			bobFeeAccountAddress = await feeAccountFactory.connect(bob).create.staticCall();
 
-			await expect(gardenFeeAccountFactory.connect(bob).create()).to.emit(
-				gardenFeeAccountFactory,
+			await expect(feeAccountFactory.connect(bob).create()).to.emit(
+				feeAccountFactory,
 				"Created"
 			);
 
-			bobGardenFEEAccount = await ethers.getContractAt(
-				"GardenFEEAccount",
-				bobGardenFEEAccountAddress
-			);
+			bobFeeAccount = await ethers.getContractAt("FeeAccount", bobFeeAccountAddress);
 
 			bobDOMAIN = {
-				name: "GardenFEEAccount",
+				name: "FeeAccount",
 				version: "1",
 				chainId: (await ethers.provider.getNetwork()).chainId,
-				verifyingContract: bobGardenFEEAccountAddress.toString(),
+				verifyingContract: bobFeeAccountAddress.toString(),
 			};
 
-			expect(await bobGardenFEEAccount.funder()).to.equal(feeManager.address);
-			expect(await bobGardenFEEAccount.recipient()).to.equal(bob.address);
+			expect(await bobFeeAccount.funder()).to.equal(feeManager.address);
+			expect(await bobFeeAccount.recipient()).to.equal(bob.address);
 		});
 
 		it("Should not able to call initialize again.", async () => {
 			await expect(
-				aliceGardenFEEAccount.__GardenFEEAccount_init(
+				aliceFeeAccount.__FeeAccount_init(
 					await seed.getAddress(),
 					feeManager.address,
 					alice.address,
-					"GardenFEEAccount",
+					"FeeAccount",
 					"1"
 				)
 			).to.be.revertedWith("Initializable: contract is already initialized");
 		});
 
-		it("User should not able to create GardenFEEAccount while one channel is active.", async () => {
-			await expect(gardenFeeAccountFactory.connect(alice).create()).to.be.revertedWith(
-				"GardenFEEAccountFactory: fee channel exists"
+		it("User should not able to create FeeAccount while one channel is active.", async () => {
+			await expect(feeAccountFactory.connect(alice).create()).to.be.revertedWith(
+				"FeeAccountFactory: fee channel exists"
 			);
 		});
 
-		it("User should not able to create GardenFEEAccount while one channel is active with createAndClose().", async () => {
+		it("User should not able to create FeeAccount while one channel is active with createAndClose().", async () => {
 			const aliceSignature = await alice.signTypedData(aliceDOMAIN, CLOSE_TYPES, {
 				amount: ethers.parseEther("10"),
 			});
@@ -205,17 +189,17 @@ describe("--- Garden Fee Account ---", () => {
 			);
 
 			await expect(
-				gardenFeeAccountFactory
+				feeAccountFactory
 					.connect(alice)
 					.createAndClose(
 						ethers.parseEther("10"),
 						feeManagerSignature,
 						aliceSignature
 					)
-			).to.be.revertedWith("GardenFEEAccountFactory: fee channel exists");
+			).to.be.revertedWith("FeeAccountFactory: fee channel exists");
 		});
 
-		it("User should not able to create GardenFEEAccount while one channel is active with createAndClaim().", async () => {
+		it("User should not able to create FeeAccount while one channel is active with createAndClaim().", async () => {
 			const aliceSignature = await alice.signTypedData(aliceDOMAIN, CLAIM_TYPES, {
 				nonce: 0,
 				amount: ethers.parseEther("1"),
@@ -232,7 +216,7 @@ describe("--- Garden Fee Account ---", () => {
 			);
 
 			await expect(
-				gardenFeeAccountFactory
+				feeAccountFactory
 					.connect(alice)
 					.createAndClaim(
 						ethers.parseEther("1"),
@@ -242,17 +226,17 @@ describe("--- Garden Fee Account ---", () => {
 						feeManagerSignature,
 						aliceSignature
 					)
-			).to.be.revertedWith("GardenFEEAccountFactory: fee channel exists");
+			).to.be.revertedWith("FeeAccountFactory: fee channel exists");
 		});
 
-		it("User should not able to settle GardenFEEAccount without claim.", async () => {
+		it("User should not able to settle FeeAccount without claim.", async () => {
 			await expect(
-				gardenFeeAccountFactory.connect(alice).settle(alice.address)
-			).to.be.revertedWith("GardenFEEAccount: no claim");
+				feeAccountFactory.connect(alice).settle(alice.address)
+			).to.be.revertedWith("FeeAccount: no claim");
 		});
 	});
 
-	describe("- GardenFEEAccount - Fee Manager Create -", () => {
+	describe("- FeeAccount - Fee Manager Create -", () => {
 		let claimMessage: ClaimMessage;
 		let secret1: Buffer;
 		let secret2: Buffer;
@@ -266,32 +250,27 @@ describe("--- Garden Fee Account ---", () => {
 		});
 		it("User should able to call feeManagerCreate", async () => {
 			await expect(
-				gardenFeeAccountFactory.connect(david).feeManagerCreate(david.address)
-			).to.be.revertedWith("GardenFEEAccountFactory: caller must be fee manager");
+				feeAccountFactory.connect(david).feeManagerCreate(david.address)
+			).to.be.revertedWith("FeeAccountFactory: caller must be fee manager");
 		});
-		it("Fee manager should able to create GardenFEEAccount.", async () => {
-			davidGardenFEEAccountAddress = await gardenFeeAccountFactory
-				.connect(david)
-				.create.staticCall();
+		it("Fee manager should able to create FeeAccount.", async () => {
+			davidFeeAccountAddress = await feeAccountFactory.connect(david).create.staticCall();
 
 			await expect(
-				gardenFeeAccountFactory.connect(feeManager).feeManagerCreate(david.address)
-			).to.emit(gardenFeeAccountFactory, "Created");
+				feeAccountFactory.connect(feeManager).feeManagerCreate(david.address)
+			).to.emit(feeAccountFactory, "Created");
 
-			davidGardenFEEAccount = await ethers.getContractAt(
-				"GardenFEEAccount",
-				davidGardenFEEAccountAddress
-			);
+			davidFeeAccount = await ethers.getContractAt("FeeAccount", davidFeeAccountAddress);
 
 			davidDOMAIN = {
-				name: "GardenFEEAccount",
+				name: "FeeAccount",
 				version: "1",
 				chainId: (await ethers.provider.getNetwork()).chainId,
-				verifyingContract: davidGardenFEEAccountAddress.toString(),
+				verifyingContract: davidFeeAccountAddress.toString(),
 			};
 
-			expect(await davidGardenFEEAccount.funder()).to.equal(feeManager.address);
-			expect(await davidGardenFEEAccount.recipient()).to.equal(david.address);
+			expect(await davidFeeAccount.funder()).to.equal(feeManager.address);
+			expect(await davidFeeAccount.recipient()).to.equal(david.address);
 		});
 		it("User should not be able to claim with wrong number of secrets message.", async () => {
 			const currentBlock = await ethers.provider.getBlockNumber();
@@ -303,19 +282,19 @@ describe("--- Garden Fee Account ---", () => {
 						secretHash: ethers.sha256(secret1),
 						timeLock: currentBlock + 10000,
 						sendAmount: 1000,
-						recieveAmount: 0,
+						receiveAmount: 0,
 					},
 					{
 						secretHash: ethers.sha256(secret2),
 						timeLock: currentBlock + 1000,
 						sendAmount: 0,
-						recieveAmount: 1000,
+						receiveAmount: 1000,
 					},
 					{
 						secretHash: ethers.sha256(secret3),
 						timeLock: currentBlock + 100,
 						sendAmount: 1000,
-						recieveAmount: 0,
+						receiveAmount: 0,
 					},
 				],
 			};
@@ -329,7 +308,7 @@ describe("--- Garden Fee Account ---", () => {
 			davidSignature = await david.signTypedData(davidDOMAIN, CLAIM_TYPES, claimMessage);
 
 			expect(
-				davidGardenFEEAccount
+				davidFeeAccount
 					.connect(david)
 					.claim(
 						claimMessage.amount,
@@ -339,11 +318,11 @@ describe("--- Garden Fee Account ---", () => {
 						feeManagerSignature,
 						davidSignature
 					)
-			).to.be.revertedWith("GardenFEEAccount: invalid input");
+			).to.be.revertedWith("FeeAccount: invalid input");
 		});
 		it("User should not be able to claim without funding it", async () => {
 			await expect(
-				davidGardenFEEAccount
+				davidFeeAccount
 					.connect(david)
 					.claim(
 						claimMessage.amount,
@@ -353,12 +332,12 @@ describe("--- Garden Fee Account ---", () => {
 						davidSignature,
 						davidSignature
 					)
-			).to.be.revertedWith("GardenFEEAccount: invalid amount");
+			).to.be.revertedWith("FeeAccount: invalid amount");
 		});
 		it("User should not be able to claim with wrong funder signature", async () => {
-			await seed.transfer(davidGardenFEEAccountAddress, ethers.parseEther("1"));
+			await seed.transfer(davidFeeAccountAddress, ethers.parseEther("1"));
 			await expect(
-				davidGardenFEEAccount
+				davidFeeAccount
 					.connect(david)
 					.claim(
 						claimMessage.amount,
@@ -368,11 +347,11 @@ describe("--- Garden Fee Account ---", () => {
 						davidSignature,
 						davidSignature
 					)
-			).to.be.revertedWith("GardenFEEAccount: invalid funder signature");
+			).to.be.revertedWith("FeeAccount: invalid funder signature");
 		});
 		it("User should not be able to claim with wrong user signature", async () => {
 			await expect(
-				davidGardenFEEAccount
+				davidFeeAccount
 					.connect(david)
 					.claim(
 						claimMessage.amount,
@@ -382,11 +361,11 @@ describe("--- Garden Fee Account ---", () => {
 						feeManagerSignature,
 						feeManagerSignature
 					)
-			).to.be.revertedWith("GardenFEEAccount: invalid recipient signature");
+			).to.be.revertedWith("FeeAccount: invalid recipient signature");
 		});
 		it("User should be able to claim few htlcs", async () => {
 			await expect(
-				davidGardenFEEAccount
+				davidFeeAccount
 					.connect(david)
 					.claim(
 						claimMessage.amount,
@@ -396,11 +375,11 @@ describe("--- Garden Fee Account ---", () => {
 						feeManagerSignature,
 						davidSignature
 					)
-			).to.emit(gardenFeeAccountFactory, "Claimed");
+			).to.emit(feeAccountFactory, "Claimed");
 		});
 		it("User should be able to claim with same number of secrets", async () => {
 			await expect(
-				davidGardenFEEAccount
+				davidFeeAccount
 					.connect(david)
 					.claim(
 						claimMessage.amount,
@@ -410,11 +389,11 @@ describe("--- Garden Fee Account ---", () => {
 						feeManagerSignature,
 						davidSignature
 					)
-			).to.be.revertedWith("GardenFEEAccount: override conditions not met");
+			).to.be.revertedWith("FeeAccount: override conditions not met");
 		});
 		it("User be able to claim with more number of secrets", async () => {
 			await expect(
-				davidGardenFEEAccount
+				davidFeeAccount
 					.connect(david)
 					.claim(
 						claimMessage.amount,
@@ -424,7 +403,7 @@ describe("--- Garden Fee Account ---", () => {
 						feeManagerSignature,
 						davidSignature
 					)
-			).to.emit(gardenFeeAccountFactory, "Claimed");
+			).to.emit(feeAccountFactory, "Claimed");
 		});
 		it("User be able to claim with greater nonce", async () => {
 			const currentBlock = await ethers.provider.getBlockNumber();
@@ -436,13 +415,13 @@ describe("--- Garden Fee Account ---", () => {
 						secretHash: ethers.sha256(secret1),
 						timeLock: currentBlock + 10000,
 						sendAmount: 1000,
-						recieveAmount: 0,
+						receiveAmount: 0,
 					},
 					{
 						secretHash: ethers.sha256(secret3),
 						timeLock: currentBlock + 100,
 						sendAmount: 1000,
-						recieveAmount: 0,
+						receiveAmount: 0,
 					},
 				],
 			};
@@ -455,7 +434,7 @@ describe("--- Garden Fee Account ---", () => {
 
 			davidSignature = await david.signTypedData(davidDOMAIN, CLAIM_TYPES, claimMessage);
 			await expect(
-				davidGardenFEEAccount
+				davidFeeAccount
 					.connect(david)
 					.claim(
 						claimMessage.amount,
@@ -465,7 +444,7 @@ describe("--- Garden Fee Account ---", () => {
 						feeManagerSignature,
 						davidSignature
 					)
-			).to.emit(gardenFeeAccountFactory, "Claimed");
+			).to.emit(feeAccountFactory, "Claimed");
 		});
 		it("User be able to claim with greater nonce and amount equal to totalAmount", async () => {
 			const currentBlock = await ethers.provider.getBlockNumber();
@@ -477,7 +456,7 @@ describe("--- Garden Fee Account ---", () => {
 						secretHash: ethers.sha256(secret1),
 						timeLock: currentBlock + 10000,
 						sendAmount: ethers.parseEther("0.5"),
-						recieveAmount: 0,
+						receiveAmount: 0,
 					},
 				],
 			};
@@ -490,7 +469,7 @@ describe("--- Garden Fee Account ---", () => {
 
 			davidSignature = await david.signTypedData(davidDOMAIN, CLAIM_TYPES, claimMessage);
 			await expect(
-				davidGardenFEEAccount
+				davidFeeAccount
 					.connect(david)
 					.claim(
 						claimMessage.amount,
@@ -500,7 +479,7 @@ describe("--- Garden Fee Account ---", () => {
 						feeManagerSignature,
 						davidSignature
 					)
-			).to.emit(gardenFeeAccountFactory, "Claimed");
+			).to.emit(feeAccountFactory, "Claimed");
 		});
 		it("User be able to claim with greater nonce and amount equal to 0", async () => {
 			const currentBlock = await ethers.provider.getBlockNumber();
@@ -512,7 +491,7 @@ describe("--- Garden Fee Account ---", () => {
 						secretHash: ethers.sha256(secret1),
 						timeLock: currentBlock + 10000,
 						sendAmount: 0,
-						recieveAmount: ethers.parseEther("0.5"),
+						receiveAmount: ethers.parseEther("0.5"),
 					},
 				],
 			};
@@ -525,7 +504,7 @@ describe("--- Garden Fee Account ---", () => {
 
 			davidSignature = await david.signTypedData(davidDOMAIN, CLAIM_TYPES, claimMessage);
 			await expect(
-				davidGardenFEEAccount
+				davidFeeAccount
 					.connect(david)
 					.claim(
 						claimMessage.amount,
@@ -535,18 +514,18 @@ describe("--- Garden Fee Account ---", () => {
 						feeManagerSignature,
 						davidSignature
 					)
-			).to.emit(gardenFeeAccountFactory, "Claimed");
+			).to.emit(feeAccountFactory, "Claimed");
 		});
 		it("User should be able to settle after expiration.", async () => {
 			mine((await ethers.provider.getBlockNumber()) + 14400);
-			await expect(davidGardenFEEAccount.connect(david).settle()).to.emit(
-				gardenFeeAccountFactory,
+			await expect(davidFeeAccount.connect(david).settle()).to.emit(
+				feeAccountFactory,
 				"Closed"
 			);
 		});
 	});
 
-	describe("- GardenFEEAccount - Settle -", () => {
+	describe("- FeeAccount - Settle -", () => {
 		let feeManagerSignature: string;
 		let charlieSignature: string;
 		let claimMessage: ClaimMessage;
@@ -557,15 +536,15 @@ describe("--- Garden Fee Account ---", () => {
 				htlcs: [],
 			};
 
-			charlieGardenFEEAccountAddress = await gardenFeeAccountFactory
+			charlieFeeAccountAddress = await feeAccountFactory
 				.connect(charlie)
 				.create.staticCall();
 
 			charlieDOMAIN = {
-				name: "GardenFEEAccount",
+				name: "FeeAccount",
 				version: "1",
 				chainId: (await ethers.provider.getNetwork()).chainId,
-				verifyingContract: charlieGardenFEEAccountAddress.toString(),
+				verifyingContract: charlieFeeAccountAddress.toString(),
 			};
 
 			charlieSignature = await charlie.signTypedData(
@@ -579,10 +558,10 @@ describe("--- Garden Fee Account ---", () => {
 				claimMessage
 			);
 
-			await seed.transfer(charlieGardenFEEAccountAddress, ethers.parseEther("1"));
+			await seed.transfer(charlieFeeAccountAddress, ethers.parseEther("1"));
 
 			await expect(
-				gardenFeeAccountFactory
+				feeAccountFactory
 					.connect(charlie)
 					.createAndClaim(
 						claimMessage.amount,
@@ -592,19 +571,19 @@ describe("--- Garden Fee Account ---", () => {
 						feeManagerSignature,
 						charlieSignature
 					)
-			).to.emit(gardenFeeAccountFactory, "Created");
+			).to.emit(feeAccountFactory, "Created");
 
-			charlieGardenFEEAccount = await ethers.getContractAt(
-				"GardenFEEAccount",
-				charlieGardenFEEAccountAddress
+			charlieFeeAccount = await ethers.getContractAt(
+				"FeeAccount",
+				charlieFeeAccountAddress
 			);
 
-			expect(await charlieGardenFEEAccount.funder()).to.equal(feeManager.address);
-			expect(await charlieGardenFEEAccount.recipient()).to.equal(charlie.address);
+			expect(await charlieFeeAccount.funder()).to.equal(feeManager.address);
+			expect(await charlieFeeAccount.recipient()).to.equal(charlie.address);
 		});
 		it("User should not be able to claim the same message.", async () => {
 			expect(
-				charlieGardenFEEAccount
+				charlieFeeAccount
 					.connect(charlie)
 					.claim(
 						claimMessage.amount,
@@ -614,33 +593,33 @@ describe("--- Garden Fee Account ---", () => {
 						feeManagerSignature,
 						charlieSignature
 					)
-			).to.be.revertedWith("GardenFEEAccount: claim already exists");
+			).to.be.revertedWith("FeeAccount: claim already exists");
 		});
 		it("User should not be able to settle before expiration.", async () => {
-			await expect(charlieGardenFEEAccount.connect(charlie).settle()).to.be.revertedWith(
-				"GardenFEEAccount: claim not expired"
+			await expect(charlieFeeAccount.connect(charlie).settle()).to.be.revertedWith(
+				"FeeAccount: claim not expired"
 			);
 		});
 		it("User should be able to settle after expiration.", async () => {
 			mine((await ethers.provider.getBlockNumber()) + 14400);
-			await expect(charlieGardenFEEAccount.connect(charlie).settle()).to.emit(
-				gardenFeeAccountFactory,
+			await expect(charlieFeeAccount.connect(charlie).settle()).to.emit(
+				feeAccountFactory,
 				"Closed"
 			);
 		});
 	});
 
-	describe("- GardenFEEAccount - Close -", () => {
+	describe("- FeeAccount - Close -", () => {
 		it("Alice should not able to close with invalid funder signature.", async () => {
 			const fakeDomain: TypedDataDomain = {
-				name: "GardenFEEAccount",
+				name: "FeeAccount",
 				version: "1",
 				chainId: 1,
-				verifyingContract: aliceGardenFEEAccountAddress.toString(),
+				verifyingContract: aliceFeeAccountAddress.toString(),
 			};
 
 			const closeMessage: CloseMessage = {
-				amount: await aliceGardenFEEAccount.totalAmount(),
+				amount: await aliceFeeAccount.totalAmount(),
 			};
 
 			const aliceSignature = await alice.signTypedData(
@@ -655,15 +634,15 @@ describe("--- Garden Fee Account ---", () => {
 			);
 
 			await expect(
-				aliceGardenFEEAccount
+				aliceFeeAccount
 					.connect(alice)
 					.close(closeMessage.amount, feeManagerSignature, aliceSignature)
-			).to.be.revertedWith("GardenFEEAccount: invalid funder signature");
+			).to.be.revertedWith("FeeAccount: invalid funder signature");
 		});
 
 		it("Alice should not able to close with invalid recipient signature.", async () => {
 			const closeMessage: CloseMessage = {
-				amount: await aliceGardenFEEAccount.totalAmount(),
+				amount: await aliceFeeAccount.totalAmount(),
 			};
 
 			const feeManagerSignature = await feeManager.signTypedData(
@@ -673,15 +652,15 @@ describe("--- Garden Fee Account ---", () => {
 			);
 
 			await expect(
-				aliceGardenFEEAccount
+				aliceFeeAccount
 					.connect(alice)
 					.close(closeMessage.amount, feeManagerSignature, feeManagerSignature)
-			).to.be.revertedWith("GardenFEEAccount: invalid recipient signature");
+			).to.be.revertedWith("FeeAccount: invalid recipient signature");
 		});
 
 		it("Alice should able to close with valid close message signatures.", async () => {
 			const closeMessage: CloseMessage = {
-				amount: await aliceGardenFEEAccount.totalAmount(),
+				amount: await aliceFeeAccount.totalAmount(),
 			};
 
 			const aliceSignature = await alice.signTypedData(
@@ -696,10 +675,10 @@ describe("--- Garden Fee Account ---", () => {
 			);
 
 			await expect(
-				aliceGardenFEEAccount
+				aliceFeeAccount
 					.connect(alice)
 					.close(closeMessage.amount, feeManagerSignature, aliceSignature)
-			).to.emit(gardenFeeAccountFactory, "Closed");
+			).to.emit(feeAccountFactory, "Closed");
 		});
 
 		it("Alice should not able to create and close without appropriate token balance.", async () => {
@@ -707,15 +686,13 @@ describe("--- Garden Fee Account ---", () => {
 				.connect(feeManager)
 				.transfer(await alice.getAddress(), ethers.parseEther("10"));
 
-			aliceGardenFEEAccountAddress = await gardenFeeAccountFactory
-				.connect(alice)
-				.create.staticCall();
+			aliceFeeAccountAddress = await feeAccountFactory.connect(alice).create.staticCall();
 
 			aliceDOMAIN = {
-				name: "GardenFEEAccount",
+				name: "FeeAccount",
 				version: "1",
 				chainId: (await ethers.provider.getNetwork()).chainId,
-				verifyingContract: aliceGardenFEEAccountAddress.toString(),
+				verifyingContract: aliceFeeAccountAddress.toString(),
 			};
 
 			const aliceSignature = await alice.signTypedData(aliceDOMAIN, CLOSE_TYPES, {
@@ -730,22 +707,18 @@ describe("--- Garden Fee Account ---", () => {
 			);
 
 			await expect(
-				gardenFeeAccountFactory
+				feeAccountFactory
 					.connect(alice)
 					.createAndClose(ethers.parseEther("1"), feeManagerSignature, aliceSignature)
 			).to.be.revertedWith("ERC20: transfer amount exceeds balance");
 		});
 
-		it("Alice should able to create and close new GardenFEEAccount.", async () => {
+		it("Alice should able to create and close new FeeAccount.", async () => {
 			const aliceBalanceBefore = await seed.balanceOf(await alice.getAddress());
 			const feeManagerBalanceBefore = await seed.balanceOf(await feeManager.getAddress());
 
-			await seed
-				.connect(alice)
-				.approve(aliceGardenFEEAccountAddress, ethers.parseEther("2"));
-			await seed
-				.connect(alice)
-				.transfer(aliceGardenFEEAccountAddress, ethers.parseEther("2"));
+			await seed.connect(alice).approve(aliceFeeAccountAddress, ethers.parseEther("2"));
+			await seed.connect(alice).transfer(aliceFeeAccountAddress, ethers.parseEther("2"));
 
 			const aliceSignature = await alice.signTypedData(aliceDOMAIN, CLOSE_TYPES, {
 				amount: ethers.parseEther("1"),
@@ -759,7 +732,7 @@ describe("--- Garden Fee Account ---", () => {
 			);
 
 			await expect(
-				gardenFeeAccountFactory
+				feeAccountFactory
 					.connect(alice)
 					.createAndClose(ethers.parseEther("1"), feeManagerSignature, aliceSignature)
 			).to.not.be.reverted;
@@ -774,7 +747,7 @@ describe("--- Garden Fee Account ---", () => {
 		});
 	});
 
-	describe("- GardenFEEAccount - Claim -", () => {
+	describe("- FeeAccount - Claim -", () => {
 		it("Alice should able to claim 0 amount when there is no balance.", async () => {
 			const claimMessage: ClaimMessage = {
 				nonce: 0,
@@ -794,7 +767,7 @@ describe("--- Garden Fee Account ---", () => {
 			);
 
 			await expect(
-				aliceGardenFEEAccount
+				aliceFeeAccount
 					.connect(alice)
 					.claim(
 						claimMessage.amount,
