@@ -56,6 +56,8 @@ contract GardenFEEAccount is EIP712Upgradeable {
     uint256 public expiration;
     uint256 public secretsProvided;
 
+    mapping(bytes => bool) public secretsClaimed;
+
     uint256 private constant TWO_DAYS = 2 * 7200;
 
     function __GardenFEEAccount_init(
@@ -125,32 +127,41 @@ contract GardenFEEAccount is EIP712Upgradeable {
         bytes memory funderSig,
         bytes memory recipientSig
     ) external {
-        require(htlcs.length == secrets.length, "GardenFEEAccount: invalid input");
+        require(htlcs.length == secrets.length, "FeeAccount: invalid input");
         bytes32 claimID = claimHash(amount_, nonce_, htlcs);
+
+        if (nonce == nonce_ && expiration != 0) {
+            amount_ = amount;
+        }
 
         uint256 localSecretsProvided = 0;
         for (uint256 i = 0; i < htlcs.length; i++) {
-            if (htlcs[i].timeLock > block.number && sha256(secrets[i]) == htlcs[i].secretHash) {
+            if (!secretsClaimed[secrets[i]]) {
+                if (htlcs[i].timeLock > block.number && sha256(secrets[i]) == htlcs[i].secretHash) {
+                    localSecretsProvided++;
+                    secretsClaimed[secrets[i]] = true;
+                    amount_ += htlcs[i].sendAmount;
+                    amount_ -= htlcs[i].recieveAmount;
+                }
+            } else {
                 localSecretsProvided++;
-                amount_ += htlcs[i].sendAmount;
-                amount_ -= htlcs[i].recieveAmount;
             }
         }
 
-        require(amount_ <= totalAmount(), "GardenFEEAccount: invalid amount");
+        require(amount_ <= totalAmount(), "FeeAccount: invalid amount");
         if (expiration != 0) {
             // a claim exists, so should satisfy override conditions
             require(
                 nonce_ > nonce || (nonce_ == nonce && localSecretsProvided > secretsProvided),
-                "GardenFEEAccount: override conditions not met"
+                "FeeAccount: override conditions not met"
             );
         }
 
         // verify funder and recipient signatures
         address funderSigner = claimID.recover(funderSig);
         address recipientSigner = claimID.recover(recipientSig);
-        require(funderSigner == funder, "GardenFEEAccount: invalid funder signature");
-        require(recipientSigner == recipient, "GardenFEEAccount: invalid recipient signature");
+        require(funderSigner == funder, "FeeAccount: invalid funder signature");
+        require(recipientSigner == recipient, "FeeAccount: invalid recipient signature");
 
         // update global claim state
         secretsProvided = localSecretsProvided;
