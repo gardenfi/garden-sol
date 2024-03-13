@@ -58,7 +58,7 @@ contract GardenFEEAccount is EIP712Upgradeable {
 
     uint256 private constant TWO_DAYS = 2 * 7200;
 
-    function initialize() external {
+    function initialize() initializer external {
         _disableInitializers();
     }
 
