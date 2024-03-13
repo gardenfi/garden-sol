@@ -58,6 +58,10 @@ contract GardenFEEAccount is EIP712Upgradeable {
 
     uint256 private constant TWO_DAYS = 2 * 7200;
 
+    function initialize() external {
+        _disableInitializers();
+    }
+
     function __GardenFEEAccount_init(
         IERC20Upgradeable token_,
         address funder_,
