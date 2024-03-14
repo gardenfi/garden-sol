@@ -140,7 +140,7 @@ contract FeeAccount is EIP712Upgradeable {
 
         uint256 localSecretsProvided = 0;
         for (uint256 i = 0; i < htlcs.length; i++) {
-            if (!secretsClaimed[secrets[i]]) {
+            if (!(secretsClaimed[secrets[i]] && nonce == nonce_)) {
                 if (htlcs[i].expiry > block.number && sha256(secrets[i]) == htlcs[i].secretHash) {
                     localSecretsProvided++;
                     secretsClaimed[secrets[i]] = true;
