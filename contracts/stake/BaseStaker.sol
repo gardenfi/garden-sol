@@ -12,6 +12,8 @@ import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
  * It also includes a function to retrieve filler information.
  */
 abstract contract BaseStaker is AccessControl {
+    using EnumerableSet for EnumerableSet.Bytes32Set;
+
     struct Stake {
         address owner;
         uint256 stake;
