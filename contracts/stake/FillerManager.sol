@@ -12,7 +12,6 @@ import "./BaseStaker.sol";
  * during the registration period and refunds them to the fillers after a cooldown period.
  */
 abstract contract FillerManager is BaseStaker {
-    using EnumerableSet for EnumerableSet.AddressSet;
     using SafeERC20 for IERC20;
 
     uint16 constant MAX_FEE_IN_BIPS = 10_000;
@@ -68,7 +67,7 @@ abstract contract FillerManager is BaseStaker {
     function refund(address filler_) external {
         Filler storage filler = fillers[filler_];
 
-        require(filler.deregisteredAt != 0, "FillerManager: not registered");
+        require(filler.deregisteredAt != 0, "FillerManager: not deregistered");
         require(filler.deregisteredAt + FILLER_COOL_DOWN < block.number, "FillerManager: cooldown not passed");
 
         delete (fillers[filler_]);

@@ -14,11 +14,10 @@ interface IGardenStaker {
     function SEED() external returns (IERC20);
 }
 
-
 /**
  * @title Flower
  * @author Garden Finance
- * @dev This contract represents a Flower ERC721 token. 
+ * @dev This contract represents a Flower ERC721 token.
  * It allows users to mint flowers by staking a ` 10 * DELEGATE_STAKE` of tokens and vote for a filler.
  * Users can also change their vote by providing the [stake ID / Nft Token ID] and the new filler address.
  */
@@ -30,6 +29,8 @@ contract Flower is ERC721 {
     uint256 private constant MAX_UINT_256 = type(uint256).max;
 
     constructor(string memory name, string memory symbol, address gardenStaker_) ERC721(name, symbol) {
+        require(gardenStaker_ != address(0), "Flower: gardenStaker is zero address");
+
         gardenStaker = IGardenStaker(gardenStaker_);
     }
 
@@ -38,7 +39,7 @@ contract Flower is ERC721 {
      * @dev This function transfers the required stake amount of tokens from the caller to the contract,
      * approves the contract to spend the tokens, and calls the `vote` function of the `gardenStaker` contract
      * to vote for the specified filler. The stake ID is then used to mint a new Flower ERC721 token for the caller.
-     * `stakeID` generated from `gardenStaker` is used as the token ID. 
+     * `stakeID` generated from `gardenStaker` is used as the token ID.
      * @param filler The address of the filler to vote for.
      */
     function mint(address filler) external {

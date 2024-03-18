@@ -74,6 +74,10 @@ contract GardenFEEAccount is EIP712Upgradeable {
         address funder_,
         address recipient_
     ) internal onlyInitializing {
+        require(address(token_) != address(0), "GardenFEEAccount: token is zero address");
+        require(funder_ != address(0), "GardenFEEAccount: funder is zero address");
+        require(recipient_ != address(0), "GardenFEEAccount: recipient is zero address");
+
         token = token_;
         funder = funder_;
         recipient = recipient_;

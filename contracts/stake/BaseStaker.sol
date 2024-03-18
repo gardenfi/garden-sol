@@ -12,8 +12,6 @@ import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
  * It also includes a function to retrieve filler information.
  */
 abstract contract BaseStaker is AccessControl {
-    using EnumerableSet for EnumerableSet.AddressSet;
-
     struct Stake {
         address owner;
         uint256 stake;
@@ -44,6 +42,8 @@ abstract contract BaseStaker is AccessControl {
     mapping(address => Filler) internal fillers;
 
     constructor(address seed, uint256 delegateStake, uint256 fillerStake, uint256 fillerCooldown) {
+        require(seed != address(0), "BaseStaker: seed is zero address");
+
         SEED = IERC20(seed);
         DELEGATE_STAKE = delegateStake;
         FILLER_STAKE = fillerStake;
@@ -66,6 +66,6 @@ abstract contract BaseStaker is AccessControl {
         returns (uint16 feeInBips, uint256 stake, uint256 deregisteredAt, bytes32[] memory delegateStakeIDs)
     {
         Filler storage f = fillers[filler];
-        return (f.feeInBips, f.stake, f.deregisteredAt, f.delegateStakeIDs._inner._values);
+        return (f.feeInBips, f.stake, f.deregisteredAt, f.delegateStakeIDs.values());
     }
 }

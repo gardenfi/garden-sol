@@ -37,6 +37,9 @@ contract GardenFEEAccountFactory {
         string memory feeAccountName_,
         string memory feeAccountVersion_
     ) {
+        require(address(token_) != address(0), "GardenFEEAccountFactory: token is zero address");
+        require(feeManager_ != address(0), "GardenFEEAccountFactory: fee manager is zero address");
+
         token = token_;
         feeManager = feeManager_;
         template = address(new GardenFEEAccount());
@@ -107,7 +110,7 @@ contract GardenFEEAccountFactory {
         delete channels[recipient];
     }
 
-     /**
+    /**
      * @notice Creates a fee channel.
      * @dev The fee channel is created by deploying a clone using the template.
      * This function is only callable by the fee manager.
