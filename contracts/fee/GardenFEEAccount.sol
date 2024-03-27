@@ -141,7 +141,7 @@ contract GardenFEEAccount is EIP712Upgradeable {
             if (secretsClaimed[secrets[htlcs[i].secretHash]] > 0) {
                 if (secretsClaimed[secrets[htlcs[i].secretHash]] != nonce_) {
                     secretsProcessed = true;
-                    secretsClaimed[secrets_[i]] = nonce_;
+                    secretsClaimed[secrets[htlcs[i].secretHash]] = nonce_;
                     amount_ += htlcs[i].sendAmount;
                     amount_ -= htlcs[i].recieveAmount;
                 }
