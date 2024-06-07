@@ -21,13 +21,17 @@ describe("--- HTLC ---", () => {
 		secretHash: BytesLike;
 	};
 
-	const TYPES: Record<string, TypedDataField[]> = {
+	const INITIATE_TYPE: Record<string, TypedDataField[]> = {
 		Initiate: [
 			{ name: "redeemer", type: "address" },
 			{ name: "expiry", type: "uint256" },
 			{ name: "amount", type: "uint256" },
 			{ name: "secretHash", type: "bytes32" },
 		],
+	};
+
+	const REFUND_TYPE: Record<string, TypedDataField[]> = {
+		Refund: [{ name: "orderId", type: "bytes32" }],
 	};
 
 	let owner: HardhatEthersSigner;
@@ -45,12 +49,14 @@ describe("--- HTLC ---", () => {
 	let secret3: BytesLike;
 	let secret4: BytesLike;
 	let secret5: BytesLike;
+	let secret6: BytesLike;
 
 	let orderID1: BytesLike;
 	let orderID2: BytesLike;
 	let orderID3: BytesLike;
 	let orderID4: BytesLike;
 	let orderID5: BytesLike;
+	let orderID6: BytesLike;
 
 	let expiry_: BigNumberish;
 
@@ -74,6 +80,7 @@ describe("--- HTLC ---", () => {
 		secret3 = randomBytes(32);
 		secret4 = randomBytes(32);
 		secret5 = randomBytes(32);
+		secret6 = randomBytes(32);
 	});
 
 	describe("- Pre-Conditions -", () => {
@@ -359,7 +366,7 @@ describe("--- HTLC ---", () => {
 				secretHash: ethers.sha256(secret5),
 			};
 
-			const signature = await bob.signTypedData(DOMAIN, TYPES, initiate);
+			const signature = await bob.signTypedData(DOMAIN, INITIATE_TYPE, initiate);
 
 			await expect(
 				gardenHTLC
@@ -383,7 +390,7 @@ describe("--- HTLC ---", () => {
 				secretHash: ethers.sha256(secret5),
 			};
 
-			const signature = await alice.signTypedData(DOMAIN, TYPES, initiate);
+			const signature = await alice.signTypedData(DOMAIN, INITIATE_TYPE, initiate);
 
 			await expect(
 				gardenHTLC
@@ -415,7 +422,7 @@ describe("--- HTLC ---", () => {
 				)
 			);
 
-			const signature = await alice.signTypedData(DOMAIN, TYPES, initiate);
+			const signature = await alice.signTypedData(DOMAIN, INITIATE_TYPE, initiate);
 
 			await expect(
 				gardenHTLC
@@ -531,6 +538,63 @@ describe("--- HTLC ---", () => {
 				.withArgs(orderID5);
 
 			expect(await seed.balanceOf(alice.address)).to.equal(ethers.parseEther("500"));
+		});
+	});
+
+	describe("- HTLC - Instant Refund -", () => {
+		let instantRefund: {
+			orderId: string;
+		};
+		it("Should not able to instant refund a swap with an invalid signature.", async () => {
+			expiry_ = (await ethers.provider.getBlockNumber()) + 7200;
+			const initiate: Initiate = {
+				redeemer: bob.address,
+				expiry: expiry_,
+				amount: ethers.parseEther("100"),
+				secretHash: ethers.sha256(secret6),
+			};
+
+			orderID6 = ethers.sha256(
+				ethers.AbiCoder.defaultAbiCoder().encode(
+					["bytes32", "address"],
+					[initiate.secretHash, alice.address]
+				)
+			);
+			await expect(
+				gardenHTLC
+					.connect(alice)
+					.initiate(
+						initiate.redeemer,
+						initiate.expiry,
+						initiate.amount,
+						initiate.secretHash
+					)
+			)
+				.to.emit(gardenHTLC, "Initiated")
+				.withArgs(orderID6, initiate.secretHash, initiate.amount);
+
+			instantRefund = { orderId: orderID6 };
+
+			const instantRefundSig = await alice.signTypedData(
+				DOMAIN,
+				REFUND_TYPE,
+				instantRefund
+			);
+
+			await expect(
+				gardenHTLC.connect(charlie).instantRefund(orderID6, instantRefundSig)
+			).to.be.revertedWith("HTLC: invalid redeemer signature");
+		});
+		it("Should be able to instant refund a swap with an valid signature.", async () => {
+			const instantRefundSig = await bob.signTypedData(
+				DOMAIN,
+				REFUND_TYPE,
+				instantRefund
+			);
+
+			await expect(gardenHTLC.connect(charlie).instantRefund(orderID6, instantRefundSig))
+				.to.emit(gardenHTLC, "Refunded")
+				.withArgs(orderID6);
 		});
 	});
 });
