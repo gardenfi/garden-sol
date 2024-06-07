@@ -585,7 +585,7 @@ describe("--- HTLC ---", () => {
 				gardenHTLC.connect(charlie).instantRefund(orderID6, instantRefundSig)
 			).to.be.revertedWith("HTLC: invalid redeemer signature");
 		});
-		it("Should not able to instant refund a swap with an valid signature.", async () => {
+		it("Should be able to instant refund a swap with an valid signature.", async () => {
 			const instantRefundSig = await bob.signTypedData(
 				DOMAIN,
 				REFUND_TYPE,
