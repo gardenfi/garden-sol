@@ -1,27 +1,32 @@
-import { IBitcoinProvider } from "@catalogfi/wallets";
+import { IBitcoinProvider, IBitcoinWallet, Urgency } from "@catalogfi/wallets";
 import * as bitcoin from "bitcoinjs-lib";
-import { fromBech32 } from "bitcoinjs-lib/src/address";
 import { taggedHash } from "bitcoinjs-lib/src/crypto";
-import { Taptree } from "bitcoinjs-lib/src/types";
-import ECPairFactory from "ecpair";
+import * as varuint from "varuint-bitcoin";
 import * as ecc from "tiny-secp256k1";
-import { generateInternalkey } from "./internalKey";
-
-export enum Leaf {
-	RedeemLeaf,
-	RefundLeaf,
-	InstantRefundLeaf,
-}
+import { generateInternalkey, tweakPubkey } from "./internalKey";
+import { Taptree } from "bitcoinjs-lib/src/types";
+import { LEAF_VERSION } from "./constants";
 
 bitcoin.initEccLib(ecc);
 
 export class GardenHTLC {
 	private secretHash: string;
+	/**
+	 * hash160 of the redeemer's public key without 02 or 03 prefix
+	 */
 	private redeemerAddress: string;
+	/**
+	 * hash160 of the initiator's public key without 02 or 03 prefix
+	 */
 	private initiatorAddress: string;
 	private expiry: number;
 	private network: bitcoin.Network;
 
+	private internalPubkey: Buffer;
+
+	/**
+	 * Note: redeemerAddress and initiatorAddress should be hash160 of the public key without 02 or 03 prefix
+	 */
 	constructor(
 		secretHash: string,
 		redeemerAddress: string,
@@ -34,155 +39,163 @@ export class GardenHTLC {
 		this.initiatorAddress = initiatorAddress;
 		this.expiry = expiry;
 		this.network = network;
+		this.internalPubkey = generateInternalkey();
 	}
 
+	/**
+	 * Generates a taproot address for receiving the funds
+	 */
 	address(): string {
 		const { address } = bitcoin.payments.p2tr({
-			internalPubkey: generateInternalkey(),
+			internalPubkey: this.internalPubkey,
 			network: this.network,
 			scriptTree: this.leaves() as Taptree,
 		});
-		return address!;
+		if (!address) throw new Error("Could not generate GardenHTLC address");
+		return address;
 	}
 
+	/**
+	 * Reveals the secret and redeems the HTLC
+	 */
 	async redeem(
-		leaf: Leaf,
 		secret: string,
-		signer: string,
-		provider: IBitcoinProvider
+		signer: IBitcoinWallet,
+		provider: IBitcoinProvider,
+		fee?: number
 	): Promise<string> {
+		const address = this.address();
+		const output = bitcoin.address.toOutputScript(address, this.network);
+
+		const tweakedPubkey = this.getTweakPubkey();
+		const utxos = await provider.getUTXOs(address);
+
+		const balance = utxos.reduce((acc, utxo) => acc + utxo.value, 0);
+
 		const tx = new bitcoin.Transaction();
 		tx.version = 2;
-
-		const { address, output } = bitcoin.payments.p2tr({
-			internalPubkey: generateInternalkey(),
-			network: this.network,
-			scriptTree: this.leaves() as Taptree,
-		});
-		if (!address) throw new Error("Could not create address");
-		const utxos = await provider.getUTXOs(address!);
 
 		for (let i = 0; i < utxos.length; i++) {
 			tx.addInput(Buffer.from(utxos[i].txid, "hex").reverse(), utxos[i].vout);
 		}
 
-		tx.addOutput(output!, 1000);
+		fee ??= await provider.suggestFee(address, balance, Urgency.MEDIUM);
+		tx.addOutput(output, utxos[0].value - fee);
+
 		const hashtype = bitcoin.Transaction.SIGHASH_DEFAULT;
 
-		for (let i = 0; i < tx.ins.length; i++) {
-			const hash = tx.hashForWitnessV1(0, [output!], [1000], hashtype);
-			const signature = ecc.signSchnorr(hash, Buffer.from(signer, "hex"));
+		const refundLeafHash = this.leafHash("refund");
+		const redeemLeafHash = this.leafHash("redeem");
 
-			const merkleProof = generateMerkleProof(
-				this.leaves()
-					.flat()
-					.map((l) => l.output),
-				i
+		for (let i = 0; i < tx.ins.length; i++) {
+			const hash = tx.hashForWitnessV1(
+				i,
+				[output],
+				[utxos[i].value],
+				hashtype,
+				redeemLeafHash
 			);
-			const signerEc = ECPairFactory(ecc).fromPrivateKey(Buffer.from(signer, "hex"));
+			const signature = await signer.signSchnorr(hash);
+
 			tx.setWitness(i, [
-				Buffer.from(signature),
-				signerEc.publicKey,
+				signature,
+				// tapscript only accepts 32 bytes public key defined in BIP340
+				Buffer.from(await signer.getPublicKey(), "hex").subarray(1, 33),
 				Buffer.from(secret, "hex"),
-				// TODO: need to add control block
+				this.redeemLeaf(),
+				Buffer.concat([
+					Buffer.from([LEAF_VERSION | tweakedPubkey.parity]),
+					this.internalPubkey,
+					refundLeafHash,
+				]),
 			]);
 		}
 
-		throw new Error("Method not implemented.");
+		return await provider.broadcast(tx.toHex());
+	}
+
+	/**
+	 * Tweaks the internal pubkey with the merkle root hash of the leaves
+	 *
+	 * As defined in BIP341
+	 */
+	private getTweakPubkey() {
+		const redeemLeafHash = this.leafHash("redeem");
+		const refundLeafHash = this.leafHash("refund");
+		const rootHash = taggedHash(
+			"TapBranch",
+			Buffer.concat([redeemLeafHash, refundLeafHash])
+		);
+		return tweakPubkey(this.internalPubkey, rootHash);
+	}
+
+	private leafHash(leaf: "redeem" | "refund"): Buffer {
+		return taggedHash(
+			"TapLeaf",
+			serializeScript(leaf === "redeem" ? this.redeemLeaf() : this.redundLeaf())
+		);
+	}
+
+	private redundLeaf(): Buffer {
+		return bitcoin.script.fromASM(
+			`
+			${bitcoin.script.number.encode(this.expiry).toString("hex")}
+			OP_CHECKSEQUENCEVERIFY
+			OP_DROP
+			OP_DUP
+			OP_HASH160
+			${this.initiatorAddress}
+			OP_EQUALVERIFY
+			OP_CHECKSIG
+			`
+				.trim()
+				.replace(/\s+/g, " ")
+		);
+	}
+
+	private redeemLeaf(): Buffer {
+		return bitcoin.script.fromASM(
+			`
+			OP_SHA256
+			${this.secretHash}
+			OP_EQUALVERIFY
+			OP_DUP
+			OP_HASH160
+			${this.redeemerAddress}
+			OP_EQUALVERIFY
+			OP_CHECKSIG
+			`
+				.trim()
+				.replace(/\s+/g, " ")
+		);
 	}
 
 	leaves() {
 		return [
 			{
-				version: 0xc0,
-				output: bitcoin.script.fromASM(
-					`OP_SHA256
-                    ${this.secretHash}
-                    OP_EQUALVERIFY
-                    OP_DUP
-                    OP_HASH160
-                    ${fromBech32(this.redeemerAddress).data.toString("hex")}
-                    OP_EQUALVERIFY
-                    OP_CHECKSIG
-                    `
-						.trim()
-						.replace(/\s+/g, " ")
-				),
+				version: LEAF_VERSION,
+				output: this.redeemLeaf(),
 			},
-			[
-				{
-					version: 0xc0,
-					output: bitcoin.script.fromASM(
-						`
-                    ${bitcoin.script.number.encode(this.expiry).toString("hex")}
-                    OP_CHECKSEQUENCEVERIFY
-                    OP_DROP
-                    OP_DUP
-                    OP_HASH160
-                    ${fromBech32(this.initiatorAddress).data.toString("hex")}
-                    OP_EQUALVERIFY
-                    OP_CHECKSIG
-                    `
-							.trim()
-							.replace(/\s+/g, " ")
-					),
-				},
-				{
-					version: 0xc0,
-					output: bitcoin.script.fromASM(
-						`
-                    OP_2
-                    OP_DUP
-                    OP_HASH160
-                    ${fromBech32(this.initiatorAddress).data.toString("hex")}
-                    OP_EQUALVERIFY
-                    OP_DUP
-                    OP_HASH160
-                    ${fromBech32(this.redeemerAddress).data.toString("hex")}
-                    OP_EQUALVERIFY
-                    OP_2
-                    OP_CHECKMULTISIG
-                    `
-							.trim()
-							.replace(/\s+/g, " ")
-					),
-				},
-			],
+			{
+				version: LEAF_VERSION,
+				output: this.redundLeaf(),
+			},
 		];
 	}
 }
-
-export const serializeScript = (script: Buffer) => {
-	return Buffer.concat([
-		Buffer.from("c0", "hex"),
-		Buffer.from(script.byteLength.toString(16), "hex"), // add compact size encoding later
-		script,
-	]);
+/**
+ * concats the leaf version, the length of the script, and the script itself
+ */
+const serializeScript = (leafScript: Buffer) => {
+	return Buffer.concat([Uint8Array.from([LEAF_VERSION]), prefixScriptLength(leafScript)]);
 };
 
-export const generateMerkleProof = (scripts: Buffer[], index: number) => {
-	if (index > scripts.length - 1) throw new Error("Invalid index");
-
-	let currentLevel = scripts.map((script) => taggedHash("TapLeaf", serializeScript(script)));
-
-	const proofs = [] as Buffer[];
-
-	while (currentLevel.length != 1) {
-		let nextLevel = [] as Buffer[];
-		if (index < currentLevel.length) {
-			if (index % 2) proofs.push(currentLevel[index - 1]);
-			else proofs.push(currentLevel[index + 1]);
-
-			index = Math.floor(index / 2);
-		}
-		const maxNodes = Math.pow(2, Math.floor(Math.log2(currentLevel.length)));
-		for (let i = 0; i < maxNodes; i += 2) {
-			const [smaller, bigger] = currentLevel.slice(i, i + 2).sort((a, b) => a.compare(b));
-
-			nextLevel.push(taggedHash("TapBranch", Buffer.concat([smaller, bigger])));
-		}
-		currentLevel = [...nextLevel, ...currentLevel.slice(maxNodes)];
-	}
-
-	return proofs;
-};
+/**
+ * concats the length of the script and the script itself
+ */
+function prefixScriptLength(s: Buffer): Buffer {
+	const varintLen = varuint.encodingLength(s.length);
+	const buffer = Buffer.allocUnsafe(varintLen);
+	varuint.encode(s.length, buffer);
+	return Buffer.concat([buffer, s]);
+}

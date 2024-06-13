@@ -33,12 +33,13 @@
 		"typescript": ">=4.5.0"
 	},
 	"dependencies": {
-		"@catalogfi/wallets": "^0.2.39",
+		"@catalogfi/wallets": "^0.2.40",
 		"@openzeppelin/contracts": "^4.9.5",
 		"@openzeppelin/contracts-upgradeable": "^4.9.5",
 		"bitcoinjs-lib": "^6.1.6",
 		"ecpair": "^2.1.0",
-		"tiny-secp256k1": "^2.2.3"
+		"tiny-secp256k1": "^2.2.3",
+		"varuint-bitcoin": "^1.1.2"
 	},
 	"private": true
 }

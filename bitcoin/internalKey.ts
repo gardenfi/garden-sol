@@ -1,4 +1,4 @@
-import { sha256 } from "bitcoinjs-lib/src/crypto";
+import { sha256, taggedHash } from "bitcoinjs-lib/src/crypto";
 import { toXOnly } from "bitcoinjs-lib/src/psbt/bip371";
 import * as ecc from "tiny-secp256k1";
 
@@ -18,16 +18,32 @@ const H = Buffer.from(
 	"hex"
 );
 
+const errors = {
+	failedToCreateInternalPubkey: "failed to create internal pubkey",
+	failedToTweakPubkey: "failed to tweak pubkey",
+};
+
 export function generateInternalkey() {
 	const hash = sha256(Buffer.from("GardenHTLC", "utf-8"));
 	const R = ecc.pointMultiply(Buffer.concat([Buffer.from("04", "hex"), G]), hash);
 
 	if (!R) {
-		throw new Error("Could not create R");
+		throw new Error(errors.failedToCreateInternalPubkey);
 	}
 
 	const internalPubKey = ecc.pointAdd(H, R);
+	if (!internalPubKey) throw new Error(errors.failedToCreateInternalPubkey);
 
-	if (!internalPubKey) throw new Error("Could not create internal pubkey");
 	return toXOnly(Buffer.from(internalPubKey));
+}
+
+export function tweakPubkey(pubkey: Buffer, hash: Buffer) {
+	const tweak = taggedHash("TapTweak", Buffer.concat([pubkey, hash]));
+	const tweakedPubKey = ecc.xOnlyPointAddTweak(pubkey, tweak);
+
+	if (!tweakedPubKey) {
+		throw new Error(errors.failedToTweakPubkey);
+	}
+
+	return tweakedPubKey;
 }
