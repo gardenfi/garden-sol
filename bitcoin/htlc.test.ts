@@ -1,5 +1,5 @@
 import { expect } from "chai";
-import { GardenHTLC } from "./script";
+import { GardenHTLC } from "./htlc";
 import { randomBytes } from "ethers";
 import { hash160, sha256 } from "bitcoinjs-lib/src/crypto";
 import { BitcoinNetwork, BitcoinProvider, BitcoinWallet } from "@catalogfi/wallets";
