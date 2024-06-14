@@ -33,9 +33,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@catalogfi/wallets@npm:^0.2.40":
-  version: 0.2.40
-  resolution: "@catalogfi/wallets@npm:0.2.40"
+"@catalogfi/wallets@npm:^0.2.42":
+  version: 0.2.42
+  resolution: "@catalogfi/wallets@npm:0.2.42"
   dependencies:
     "@catalogfi/encrypto": "npm:^0.1.5"
     "@catalogfi/extension": "npm:^0.1.1"
@@ -54,7 +54,7 @@ __metadata:
     utf-8-validate: "npm:^6.0.3"
     uuid: "npm:^9.0.1"
     yup: "npm:^1.4.0"
-  checksum: 8e8eb821abea1cab61b78a7d1e69d44e6a3de36125d002645bd73ccd6936d69264938d0eb25ea4163c735739d7d9ce91bdd15c9c6e5dba9e61ac61881153e92a
+  checksum: c3aef60c3d55604bceb5f34cd15ba4cc383881f95d41dd5bf1273ff750f1a3232abf399b12ca974391b7e54007682ff0e436c1c58d01165077018ab06f96f951
   languageName: node
   linkType: hard
 
@@ -3124,7 +3124,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "garden-sol@workspace:."
   dependencies:
-    "@catalogfi/wallets": "npm:^0.2.40"
+    "@catalogfi/wallets": "npm:^0.2.42"
     "@nomicfoundation/hardhat-chai-matchers": "npm:^2.0.0"
     "@nomicfoundation/hardhat-ethers": "npm:^3.0.0"
     "@nomicfoundation/hardhat-network-helpers": "npm:^1.0.0"
