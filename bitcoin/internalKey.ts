@@ -2,6 +2,8 @@ import { sha256, taggedHash } from "bitcoinjs-lib/src/crypto";
 import { toXOnly } from "bitcoinjs-lib/src/psbt/bip371";
 import * as ecc from "tiny-secp256k1";
 
+// All these values are taken from bip341
+
 const G_X = Buffer.from(
 	"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
 	"hex"
@@ -23,6 +25,11 @@ const errors = {
 	failedToTweakPubkey: "failed to tweak pubkey",
 };
 
+/**
+ * Generates NUMS internal key
+ *
+ * Uses Standard ECDSA secp256k1 curve's G point
+ */
 export function generateInternalkey() {
 	const hash = sha256(Buffer.from("GardenHTLC", "utf-8"));
 	const R = ecc.pointMultiply(Buffer.concat([Buffer.from("04", "hex"), G]), hash);

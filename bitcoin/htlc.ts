@@ -2,31 +2,44 @@ import { IBitcoinWallet, Urgency } from "@catalogfi/wallets";
 import * as bitcoin from "bitcoinjs-lib";
 import { toHashTree } from "bitcoinjs-lib/src/payments/bip341";
 import { taggedHash } from "bitcoinjs-lib/src/crypto";
-import * as varuint from "varuint-bitcoin";
 import * as ecc from "tiny-secp256k1";
 import { generateInternalkey, tweakPubkey } from "./internalKey";
 import { Taptree } from "bitcoinjs-lib/src/types";
 import { LEAF_VERSION } from "./constants";
+import { assert, xOnlyPubkey } from "./utils";
+import { serializeScript, sortLeaves } from "./utils";
+
+export enum Leaf {
+	REFUND,
+	REDEEM,
+	INSTANT_REFUND,
+}
 
 bitcoin.initEccLib(ecc);
 
 export class GardenHTLC {
+	/**
+	 * Signer of the HTLC can be either the initiator or the redeemer
+	 */
 	private signer: IBitcoinWallet;
 	private secretHash: string;
 	/**
-	 * hash160 of the redeemer's public key without 02 or 03 prefix
+	 * hash160 of the redeemer's x-only public key without 02 or 03 prefix
 	 */
 	private redeemerPubkeyHash: string;
 	/**
-	 * hash160 of the initiator's public key without 02 or 03 prefix
+	 * hash160 of the initiator's x-only public key without 02 or 03 prefix
 	 */
 	private initiatorPubkeyHash: string;
 	private expiry: number;
+	/**
+	 * NUMS internal key which blocks key path spending
+	 */
 	private internalPubkey: Buffer;
 	private network: bitcoin.networks.Network;
 
 	/**
-	 * Note: redeemerAddress and initiatorAddress should be hash160 of the public key without 02 or 03 prefix
+	 * Note: redeemerAddress and initiatorAddress should be hash160 of the x-only public key without 02 or 03 prefix
 	 */
 	private constructor(
 		signer: IBitcoinWallet,
@@ -45,6 +58,19 @@ export class GardenHTLC {
 		this.internalPubkey = generateInternalkey();
 	}
 
+	/**
+	 * Creates a GardenHTLC instance
+	 * @param signer Bitcoin wallet of the initiator or redeemer
+	 * @param secretHash 32 bytes secret hash
+	 * @param initiatorPubkeyHash hash160 of the initiator's x-only public key without 02 or 03 prefix
+	 * @param redeemerPubkeyHash hash160 of the redeemer's x-only public key without 02 or 03 prefix
+	 * @param expiry block height after which the funds can be refunded
+	 * @returns GardenHTLC instance
+	 *
+	 *
+	 * Note: When the signer is the initiator, only refund and instant refund can be done
+	 * When the signer is the redeemer, only redeem can be done
+	 */
 	static async from(
 		signer: IBitcoinWallet,
 		secretHash: string,
@@ -52,6 +78,10 @@ export class GardenHTLC {
 		redeemerPubkeyHash: string,
 		expiry: number
 	): Promise<GardenHTLC> {
+		assert(secretHash.length === 64, "secret hash should be 32 bytes");
+		assert(initiatorPubkeyHash.length === 40, "initiator pubkey hash should be 20 bytes");
+		assert(redeemerPubkeyHash.length === 40, "redeemer pubkey hash should be 20 bytes");
+
 		const network = await signer.getNetwork();
 		return new GardenHTLC(
 			signer,
@@ -77,29 +107,17 @@ export class GardenHTLC {
 	}
 
 	/**
-	 * Instantly refunds the funds to the initiator given the counterparty's signature and pubkey
+	 * Builds a raw unsigned transaction with utxos from gardenHTLC address
+	 * and uses signer's address as the output address
 	 */
-	async instantRefund(counterPartyPubkey: string, counterPartySig: string, fee?: number) {
+	private async buildRawTx(fee?: number) {
 		const tx = new bitcoin.Transaction();
 		tx.version = 2;
 
-		throw new Error("Not implemented");
-	}
-
-	/**
-	 * Reveals the secret and redeems the HTLC
-	 */
-	async redeem(secret: string, fee?: number): Promise<string> {
 		const address = this.address();
-		const output = bitcoin.address.toOutputScript(address, this.network);
 		const provider = await this.signer.getProvider();
-		const tweakedPubkey = this.getTweakPubkey();
 		const utxos = await provider.getUTXOs(address);
-
 		const balance = utxos.reduce((acc, utxo) => acc + utxo.value, 0);
-
-		const tx = new bitcoin.Transaction();
-		tx.version = 2;
 
 		for (let i = 0; i < utxos.length; i++) {
 			tx.addInput(Buffer.from(utxos[i].txid, "hex").reverse(), utxos[i].vout);
@@ -111,62 +129,133 @@ export class GardenHTLC {
 			balance - fee
 		);
 
-		const hashtype = bitcoin.Transaction.SIGHASH_DEFAULT;
+		return { tx, usedUtxos: utxos };
+	}
 
-		const refundLeafHash = this.leafHash("refund");
-		const redeemLeafHash = this.leafHash("redeem");
-		const instantRefundLeafHash = this.leafHash("instant-refund");
-		const sortedRefundLeaves = [refundLeafHash, instantRefundLeafHash];
+	/**
+	 * prevout script for the gardenHTLC address
+	 */
+	private getOutputScript() {
+		return bitcoin.address.toOutputScript(this.address(), this.network);
+	}
 
-		if (refundLeafHash.compare(instantRefundLeafHash) > 0) {
-			const temp = refundLeafHash;
-			sortedRefundLeaves[0] = instantRefundLeafHash;
-			sortedRefundLeaves[1] = temp;
+	/**
+	 * Instantly refunds the funds to the initiator given the counterparty's signatures and pubkey
+	 *
+	 * Note: If there are multiple UTXOs being spend, there should be a signature for each UTXO in counterPartySigs
+	 */
+	async instantRefund(
+		counterPartyPubkey: string,
+		counterPartySigs: { utxo: string; sig: string }[],
+		fee?: number
+	) {
+		assert(counterPartySigs.length > 0, "counterparty signatures are required");
+		assert(
+			counterPartyPubkey.length === 64,
+			"counterparty pubkey should be x-only public key with 32 bytes"
+		);
+
+		const { tx, usedUtxos } = await this.buildRawTx(fee);
+		assert(
+			usedUtxos.length === counterPartySigs.length,
+			"invalid number of signatures. Expected: " +
+				usedUtxos.length +
+				" Got: " +
+				counterPartySigs.length
+		);
+
+		const output = this.getOutputScript();
+
+		const hashType = bitcoin.Transaction.SIGHASH_DEFAULT;
+		const instantRefundLeafHash = this.leafHash(Leaf.INSTANT_REFUND);
+
+		const values = usedUtxos.map((utxo) => utxo.value);
+		const outputs = generateOutputs(output, usedUtxos.length);
+
+		for (let i = 0; i < tx.ins.length; i++) {
+			const hash = tx.hashForWitnessV1(
+				i,
+				outputs,
+				values,
+				hashType,
+				instantRefundLeafHash
+			);
+			const signature = await this.signer.signSchnorr(hash);
+			const txid = Buffer.from(tx.ins[i].hash).reverse().toString("hex");
+			const counterPartySig = counterPartySigs.find((sig) => sig.utxo === txid);
+			if (!counterPartySig)
+				throw new Error("Counterparty signature not found for utxo: " + txid);
+
+			tx.setWitness(i, [
+				Buffer.from(counterPartySig.sig, "hex"),
+				xOnlyPubkey(counterPartyPubkey),
+				signature,
+				xOnlyPubkey(await this.signer.getPublicKey()),
+				this.instantRefundLeaf(),
+				this.generateControlBlockFor(Leaf.INSTANT_REFUND),
+			]);
 		}
 
-		const tapBranch = taggedHash("TapBranch", Buffer.concat(sortedRefundLeaves));
-		const outputs: Buffer[] = [];
-		const values: number[] = [];
-		utxos.forEach((_) => {
-			outputs.push(output);
-			values.push(_.value);
-		});
+		const provider = await this.signer.getProvider();
+		return await provider.broadcast(tx.toHex());
+	}
+
+	/**
+	 * Reveals the secret and redeems the HTLC
+	 */
+	async redeem(secret: string, fee?: number): Promise<string> {
+		assert(secret.length === 64, "secret should be 32 bytes");
+
+		const { tx, usedUtxos: utxos } = await this.buildRawTx(fee);
+
+		// Revealing leaf hash
+		const redeemLeafHash = this.leafHash(Leaf.REDEEM);
+
+		const values = utxos.map((utxo) => utxo.value);
+		const outputs = generateOutputs(this.getOutputScript(), utxos.length);
+
+		// sign the transaction
+		const hashType = bitcoin.Transaction.SIGHASH_DEFAULT;
 		for (let i = 0; i < tx.ins.length; i++) {
-			const hash = tx.hashForWitnessV1(i, outputs, values, hashtype, redeemLeafHash);
+			const hash = tx.hashForWitnessV1(i, outputs, values, hashType, redeemLeafHash);
 			const signature = await this.signer.signSchnorr(hash);
 
 			tx.setWitness(i, [
 				signature,
 				// tapscript only accepts 32 bytes public key defined in BIP340
-				Buffer.from(await this.signer.getPublicKey(), "hex").subarray(1, 33),
+				xOnlyPubkey(await this.signer.getPublicKey()),
 				Buffer.from(secret, "hex"),
 				this.redeemLeaf(),
-				Buffer.concat([
-					Buffer.from([LEAF_VERSION | tweakedPubkey.parity]),
-					this.internalPubkey,
-					tapBranch,
-				]),
+				this.generateControlBlockFor(Leaf.REDEEM),
 			]);
 		}
-
+		// broadcast the transaction
+		const provider = await this.signer.getProvider();
 		return await provider.broadcast(tx.toHex());
 	}
 
 	/**
-	 * Tweaks the internal pubkey with the merkle root hash of the leaves
-	 *
-	 * As defined in BIP341
+	 * Given a leaf, generates the control block necessary for spending the leaf
 	 */
-	private getTweakPubkey() {
-		const rootHash = toHashTree(this.leaves() as Taptree);
-		return tweakPubkey(this.internalPubkey, rootHash.hash);
+	private generateControlBlockFor(leaf: Leaf) {
+		const { hash } = toHashTree(this.leaves() as Taptree);
+		const tweakedPubkey = tweakPubkey(this.internalPubkey, hash);
+
+		return Buffer.concat([
+			Buffer.from([LEAF_VERSION | tweakedPubkey.parity]),
+			this.internalPubkey,
+			...this.generateMerkleProofFor(leaf),
+		]);
 	}
-
-	private leafHash(leaf: "redeem" | "refund" | "instant-refund"): Buffer {
+	/**
+	 * Generates the hash of the leaf script
+	 * @param leaf Use leaf enum or pass 0 for refund, 1 for redeem, 2 for instant refund
+	 * @returns hash of the leaf script
+	 */
+	leafHash(leaf: Leaf): Buffer {
 		let leafScript = this.redeemLeaf();
-		if (leaf === "refund") leafScript = this.redundLeaf();
-		if (leaf === "instant-refund") leafScript = this.instantRefundLeaf();
-
+		if (leaf === Leaf.REFUND) leafScript = this.redundLeaf();
+		if (leaf === Leaf.INSTANT_REFUND) leafScript = this.instantRefundLeaf();
 		return taggedHash("TapLeaf", serializeScript(leafScript));
 	}
 
@@ -204,7 +293,6 @@ export class GardenHTLC {
 		);
 	}
 
-	// when spending use sig1,pk1,sig2,pk2
 	private instantRefundLeaf(): Buffer {
 		return bitcoin.script.fromASM(
 			`
@@ -224,8 +312,9 @@ export class GardenHTLC {
 		);
 	}
 
-	leaves() {
+	private leaves() {
 		return [
+			// most probable leaf (redeem)
 			{
 				version: LEAF_VERSION,
 				output: this.redeemLeaf(),
@@ -242,20 +331,35 @@ export class GardenHTLC {
 			],
 		];
 	}
+
+	/**
+	 * Generates the merkle proof for the leaf script
+	 */
+	private generateMerkleProofFor(leaf: Leaf) {
+		const redeemLeafHash = this.leafHash(Leaf.REDEEM);
+		const instantRefundLeafHash = this.leafHash(Leaf.INSTANT_REFUND);
+		const refundLeafHash = this.leafHash(Leaf.REFUND);
+		switch (leaf) {
+			case Leaf.REDEEM:
+				const sortedRefundLeaves = sortLeaves(refundLeafHash, instantRefundLeafHash);
+				return [taggedHash("TapBranch", Buffer.concat(sortedRefundLeaves))];
+			case Leaf.REFUND:
+				return [instantRefundLeafHash, redeemLeafHash];
+			case Leaf.INSTANT_REFUND:
+				return [refundLeafHash, redeemLeafHash];
+			default:
+				throw new Error(`Invalid leaf: ${leaf}`);
+		}
+	}
 }
-/**
- * concats the leaf version, the length of the script, and the script itself
- */
-const serializeScript = (leafScript: Buffer) => {
-	return Buffer.concat([Uint8Array.from([LEAF_VERSION]), prefixScriptLength(leafScript)]);
-};
 
 /**
- * concats the length of the script and the script itself
+ * We only have one output script aka scriptpubkey, hence we generate the same output for signing
  */
-function prefixScriptLength(s: Buffer): Buffer {
-	const varintLen = varuint.encodingLength(s.length);
-	const buffer = Buffer.allocUnsafe(varintLen);
-	varuint.encode(s.length, buffer);
-	return Buffer.concat([buffer, s]);
+function generateOutputs(output: Buffer, count: number): Buffer[] {
+	const outputs: Buffer[] = [];
+	for (let i = 0; i < count; i++) {
+		outputs.push(output);
+	}
+	return outputs;
 }
