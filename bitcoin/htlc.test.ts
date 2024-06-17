@@ -26,8 +26,8 @@ describe("Bitcoin GardenHTLC", () => {
 		const alice = BitcoinWallet.createRandom(provider);
 		const bob = BitcoinWallet.createRandom(provider);
 
-		const alicePubkeyHash = await pubkeyHash(alice);
-		const bobPubkeyHash = await pubkeyHash(bob);
+		const alicePubkeyHash = await pubkey(alice);
+		const bobPubkeyHash = await pubkey(bob);
 		const expiry = 7200;
 		await regTestUtils.fund(await alice.getAddress(), provider);
 		const bobHTLC = await GardenHTLC.from(
@@ -54,8 +54,8 @@ describe("Bitcoin GardenHTLC", () => {
 		const alice = BitcoinWallet.createRandom(provider);
 		const bob = BitcoinWallet.createRandom(provider);
 
-		const alicePubkeyHash = await pubkeyHash(alice);
-		const bobPubkeyHash = await pubkeyHash(bob);
+		const alicePubkeyHash = await pubkey(alice);
+		const bobPubkeyHash = await pubkey(bob);
 
 		const expiry = 7200;
 		await regTestUtils.fund(await alice.getAddress(), provider);
@@ -85,8 +85,8 @@ describe("Bitcoin GardenHTLC", () => {
 	});
 });
 
-const pubkeyHash = async (wallet: IBitcoinWallet) => {
-	return hash160(Buffer.from((await wallet.getPublicKey()).slice(2), "hex")).toString("hex");
+const pubkey = async (wallet: IBitcoinWallet) => {
+	return (await wallet.getPublicKey()).slice(2);
 };
 
 const generateSigsForBob = async (

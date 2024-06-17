@@ -15,6 +15,8 @@ export enum Leaf {
 	INSTANT_REFUND,
 }
 
+const pubkeySize = 64 as const;
+
 bitcoin.initEccLib(ecc);
 
 export class GardenHTLC {
@@ -24,13 +26,13 @@ export class GardenHTLC {
 	private signer: IBitcoinWallet;
 	private secretHash: string;
 	/**
-	 * hash160 of the redeemer's x-only public key without 02 or 03 prefix
+	 * redeemer's x-only public key without 02 or 03 prefix
 	 */
-	private redeemerPubkeyHash: string;
+	private redeemerPubkey: string;
 	/**
-	 * hash160 of the initiator's x-only public key without 02 or 03 prefix
+	 * initiator's x-only public key without 02 or 03 prefix
 	 */
-	private initiatorPubkeyHash: string;
+	private initiatorPubkey: string;
 	private expiry: number;
 	/**
 	 * NUMS internal key which blocks key path spending
@@ -39,19 +41,19 @@ export class GardenHTLC {
 	private network: bitcoin.networks.Network;
 
 	/**
-	 * Note: redeemerAddress and initiatorAddress should be hash160 of the x-only public key without 02 or 03 prefix
+	 * Note: redeemerAddress and initiatorAddress should be x-only public key without 02 or 03 prefix
 	 */
 	private constructor(
 		signer: IBitcoinWallet,
 		secretHash: string,
-		redeemerPubkeyHash: string,
-		initiatorPubkeyHash: string,
+		redeemerPubkey: string,
+		initiatorPubkey: string,
 		expiry: number,
 		network: bitcoin.networks.Network
 	) {
 		this.secretHash = secretHash;
-		this.redeemerPubkeyHash = redeemerPubkeyHash;
-		this.initiatorPubkeyHash = initiatorPubkeyHash;
+		this.redeemerPubkey = redeemerPubkey;
+		this.initiatorPubkey = initiatorPubkey;
 		this.expiry = expiry;
 		this.signer = signer;
 		this.network = network;
@@ -79,8 +81,14 @@ export class GardenHTLC {
 		expiry: number
 	): Promise<GardenHTLC> {
 		assert(secretHash.length === 64, "secret hash should be 32 bytes");
-		assert(initiatorPubkeyHash.length === 40, "initiator pubkey hash should be 20 bytes");
-		assert(redeemerPubkeyHash.length === 40, "redeemer pubkey hash should be 20 bytes");
+		assert(
+			initiatorPubkeyHash.length === pubkeySize,
+			`initiator pubkey hash should be ${pubkeySize / 2} bytes`
+		);
+		assert(
+			redeemerPubkeyHash.length === pubkeySize,
+			`redeemer pubkey hash should be ${pubkeySize / 2} bytes`
+		);
 
 		const network = await signer.getNetwork();
 		return new GardenHTLC(
@@ -188,9 +196,7 @@ export class GardenHTLC {
 
 			tx.setWitness(i, [
 				Buffer.from(counterPartySig.sig, "hex"),
-				xOnlyPubkey(counterPartyPubkey),
 				signature,
-				xOnlyPubkey(await this.signer.getPublicKey()),
 				this.instantRefundLeaf(),
 				this.generateControlBlockFor(Leaf.INSTANT_REFUND),
 			]);
@@ -222,8 +228,6 @@ export class GardenHTLC {
 
 			tx.setWitness(i, [
 				signature,
-				// tapscript only accepts 32 bytes public key defined in BIP340
-				xOnlyPubkey(await this.signer.getPublicKey()),
 				Buffer.from(secret, "hex"),
 				this.redeemLeaf(),
 				this.generateControlBlockFor(Leaf.REDEEM),
@@ -265,10 +269,7 @@ export class GardenHTLC {
 			${bitcoin.script.number.encode(this.expiry).toString("hex")}
 			OP_CHECKSEQUENCEVERIFY
 			OP_DROP
-			OP_DUP
-			OP_HASH160
-			${this.initiatorPubkeyHash}
-			OP_EQUALVERIFY
+			${this.initiatorPubkey}	
 			OP_CHECKSIG
 			`
 				.trim()
@@ -282,10 +283,7 @@ export class GardenHTLC {
 			OP_SHA256
 			${this.secretHash}
 			OP_EQUALVERIFY
-			OP_DUP
-			OP_HASH160
-			${this.redeemerPubkeyHash}
-			OP_EQUALVERIFY
+			${this.redeemerPubkey}
 			OP_CHECKSIG
 			`
 				.trim()
@@ -296,16 +294,12 @@ export class GardenHTLC {
 	private instantRefundLeaf(): Buffer {
 		return bitcoin.script.fromASM(
 			`
-			OP_DUP
-			OP_HASH160
-			${this.initiatorPubkeyHash}
-			OP_EQUALVERIFY
-			OP_CHECKSIGVERIFY
-			OP_DUP
-			OP_HASH160
-			${this.redeemerPubkeyHash}
-			OP_EQUALVERIFY
+			${this.initiatorPubkey}
 			OP_CHECKSIG
+			${this.redeemerPubkey}
+			OP_CHECKSIGADD
+			OP_2
+			OP_NUMEQUAL
 			`
 				.trim()
 				.replace(/\s+/g, " ")
