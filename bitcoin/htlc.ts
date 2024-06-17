@@ -155,7 +155,7 @@ export class GardenHTLC implements IGardenHTLC {
 	async initiate(amount: number, fee?: number): Promise<string> {
 		fee ??= await (
 			await this.signer.getProvider()
-		).suggestFee(this.address(), amount, Urgency.MEDIUM);
+		).suggestFee(await this.signer.getAddress(), amount, Urgency.MEDIUM);
 
 		return await this.signer.send(this.address(), amount, fee);
 	}
