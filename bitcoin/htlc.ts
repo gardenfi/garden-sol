@@ -6,7 +6,7 @@ import * as ecc from "tiny-secp256k1";
 import { generateInternalkey, tweakPubkey } from "./internalKey";
 import { Taptree } from "bitcoinjs-lib/src/types";
 import { LEAF_VERSION } from "./constants";
-import { assert, xOnlyPubkey } from "./utils";
+import { assert } from "./utils";
 import { serializeScript, sortLeaves } from "./utils";
 
 export enum Leaf {
