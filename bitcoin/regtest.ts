@@ -33,7 +33,6 @@ export class regTestUtils {
 			if (stderr) {
 				throw new Error(stderr);
 			}
-			await this.mine(10, provider);
 		});
 		while ((await provider.getBalance(address)) === balance) {
 			await new Promise((resolve) => setTimeout(resolve, 100));
