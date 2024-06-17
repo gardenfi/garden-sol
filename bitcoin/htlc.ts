@@ -6,7 +6,7 @@ import * as ecc from "tiny-secp256k1";
 import { generateInternalkey, tweakPubkey } from "./internalKey";
 import { Taptree } from "bitcoinjs-lib/src/types";
 import { LEAF_VERSION } from "./constants";
-import { assert } from "./utils";
+import { assert, xOnlyPubkey } from "./utils";
 import { serializeScript, sortLeaves } from "./utils";
 import { htlcErrors } from "./errors";
 
@@ -89,17 +89,28 @@ export class GardenHTLC implements IGardenHTLC {
 		redeemerPubkey: string,
 		expiry: number
 	): Promise<GardenHTLC> {
+		// trim 0x prefix if present
+		secretHash = secretHash.startsWith("0x") ? secretHash.slice(2) : secretHash;
+
 		assert(secretHash.length === 64, htlcErrors.secretHashLenMismatch);
-		assert(initiatorPubkey.length === 64, `initiator ${htlcErrors.pubkeyLenMismatch}`);
-		assert(redeemerPubkey.length === 64, `redeemer ${htlcErrors.pubkeyLenMismatch}`);
+		// initiator and redeemer pubkey should be either x-only 32 bytes or normal 33 bytes pubkey which
+		// will be trimmed to x-only pubkey later
+		assert(
+			initiatorPubkey.length === 64 || initiatorPubkey.length === 66,
+			`initiator ${htlcErrors.pubkeyLenMismatch}`
+		);
+		assert(
+			redeemerPubkey.length === 64 || redeemerPubkey.length === 66,
+			`redeemer ${htlcErrors.pubkeyLenMismatch}`
+		);
 		assert(expiry > 0, htlcErrors.zeroOrNegativeExpiry);
 
 		const network = await signer.getNetwork();
 		return new GardenHTLC(
 			signer,
 			secretHash,
-			redeemerPubkey,
-			initiatorPubkey,
+			xOnlyPubkey(redeemerPubkey).toString("hex"),
+			xOnlyPubkey(initiatorPubkey).toString("hex"),
 			expiry,
 			network
 		);

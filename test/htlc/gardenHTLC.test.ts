@@ -12,6 +12,9 @@ import type {
 	TypedDataDomain,
 	TypedDataField,
 } from "ethers";
+import { BitcoinNetwork, BitcoinProvider, BitcoinWallet } from "@catalogfi/wallets";
+import { GardenHTLC as BitcoinGardenHTLC } from "../../bitcoin/htlc";
+import { regTestUtils } from "../../bitcoin/regtest";
 
 describe("--- HTLC ---", () => {
 	type Initiate = {
@@ -20,6 +23,8 @@ describe("--- HTLC ---", () => {
 		amount: BigNumberish;
 		secretHash: BytesLike;
 	};
+
+	const provider = new BitcoinProvider(BitcoinNetwork.Regtest, "http://localhost:30000");
 
 	const INITIATE_TYPE: Record<string, TypedDataField[]> = {
 		Initiate: [
@@ -595,6 +600,135 @@ describe("--- HTLC ---", () => {
 			await expect(gardenHTLC.connect(charlie).instantRefund(orderID6, instantRefundSig))
 				.to.emit(gardenHTLC, "Refunded")
 				.withArgs(orderID6);
+		});
+	});
+
+	describe("- HTLC - Bitcoin <-> EVM", () => {
+		const aliceBitcoinWallet = BitcoinWallet.createRandom(provider);
+		const bobBitcoinWallet = BitcoinWallet.createRandom(provider);
+		const secret = randomBytes(32);
+		const secretHash = ethers.sha256(secret);
+
+		const fromAmount = 10000;
+		const toAmount = 90000;
+		const expiry = 7200;
+
+		it("Should be able to swap BTC for SEED", async () => {
+			const bobPubkey = await bobBitcoinWallet.getPublicKey();
+			const alicePubkey = await aliceBitcoinWallet.getPublicKey();
+
+			await regTestUtils.fund(await aliceBitcoinWallet.getAddress(), provider);
+
+			const aliceBitcoinHTLC = await BitcoinGardenHTLC.from(
+				aliceBitcoinWallet,
+				secretHash,
+				alicePubkey,
+				bobPubkey,
+				expiry
+			);
+			// Alice initiates in Bitcoin
+			await aliceBitcoinHTLC.initiate(fromAmount);
+
+			// For EVM initiate, bob needs to have SEED
+			await seed.connect(owner).transfer(bob.address, toAmount);
+			// Bob approves the gardenHTLC to spend his SEED
+			await seed
+				.connect(bob)
+				.approve(await gardenHTLC.getAddress(), ethers.parseEther("100"));
+
+			// Bob initiates in EVM
+			await gardenHTLC.connect(bob).initiate(alice.address, expiry, toAmount, secretHash);
+
+			const orderId = ethers.sha256(
+				ethers.AbiCoder.defaultAbiCoder().encode(
+					["bytes32", "address"],
+					[secretHash, bob.address]
+				)
+			);
+			const aliceSEEDBalanceBefore = await seed.balanceOf(alice.address);
+			// Alice redeems in EVM by providing the secret
+			await gardenHTLC.connect(alice).redeem(orderId, secret);
+
+			// make sure alice received the SEED
+			expect(await seed.balanceOf(alice.address)).to.be.eq(
+				aliceSEEDBalanceBefore + BigInt(toAmount)
+			);
+
+			const bobHTLC = await BitcoinGardenHTLC.from(
+				bobBitcoinWallet,
+				secretHash,
+				alicePubkey,
+				bobPubkey,
+				expiry
+			);
+			// Bob redeems in Bitcoin
+			const redeemId = await bobHTLC.redeem(secret.toString("hex"));
+			const tx = await provider.getTransaction(redeemId);
+
+			// make sure bob received the BTC
+			expect(tx).to.be.an("object");
+			expect(tx.txid).to.be.eq(redeemId);
+			expect(tx.vout[0].scriptpubkey_address).to.be.equal(
+				await bobBitcoinWallet.getAddress()
+			);
+		});
+
+		it("Should be able to swap SEED for BTC", async () => {
+			const alicePubkey = await aliceBitcoinWallet.getPublicKey();
+			const bobPubkey = await bobBitcoinWallet.getPublicKey();
+			await regTestUtils.fund(await bobBitcoinWallet.getAddress(), provider);
+
+			await seed.connect(owner).transfer(alice.address, fromAmount);
+			await seed
+				.connect(alice)
+				.approve(await gardenHTLC.getAddress(), ethers.parseEther("100"));
+			// Alice initiates in EVM
+			await gardenHTLC
+				.connect(alice)
+				.initiate(bob.address, expiry, fromAmount, secretHash);
+
+			const bobHTLC = await BitcoinGardenHTLC.from(
+				bobBitcoinWallet,
+				secretHash,
+				bobPubkey,
+				alicePubkey,
+				expiry
+			);
+			// Bob initiates in Bitcoin
+			await bobHTLC.initiate(toAmount);
+
+			const aliceHTLC = await BitcoinGardenHTLC.from(
+				aliceBitcoinWallet,
+				secretHash,
+				bobPubkey,
+				alicePubkey,
+				expiry
+			);
+			// Alice redeems in Bitcoin
+			const txId = await aliceHTLC.redeem(secret.toString("hex"));
+
+			// make sure alice received the BTC
+			const tx = await provider.getTransaction(txId);
+			expect(tx).to.be.an("object");
+			expect(tx.txid).to.be.eq(txId);
+			expect(tx.vout[0].scriptpubkey_address).to.be.equal(
+				await aliceBitcoinWallet.getAddress()
+			);
+
+			const orderId = ethers.sha256(
+				ethers.AbiCoder.defaultAbiCoder().encode(
+					["bytes32", "address"],
+					[secretHash, alice.address]
+				)
+			);
+
+			const bobBalance = await seed.balanceOf(bob.address);
+
+			// Bob redeems in EVM
+			await gardenHTLC.connect(bob).redeem(orderId, secret);
+
+			// make sure bob received the SEED
+			expect(await seed.balanceOf(bob.address)).to.be.eq(bobBalance + BigInt(fromAmount));
 		});
 	});
 });
