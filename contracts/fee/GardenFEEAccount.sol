@@ -26,7 +26,7 @@ contract GardenFEEAccount is EIP712Upgradeable {
 
     struct HTLC {
         bytes32 secretHash;
-        uint256 timeLock;
+        uint256 expiry;
         uint256 sendAmount;
         uint256 recieveAmount;
     }
@@ -37,12 +37,12 @@ contract GardenFEEAccount is EIP712Upgradeable {
         keccak256(
             abi.encodePacked(
                 "Claim(uint256 nonce,uint256 amount,HTLC[] htlcs)",
-                "HTLC(bytes32 secretHash,uint256 timeLock,uint256 sendAmount,uint256 recieveAmount)"
+                "HTLC(bytes32 secretHash,uint256 expiry,uint256 sendAmount,uint256 recieveAmount)"
             )
         );
 
     bytes32 private constant HTLC_TYPEHASH =
-        keccak256("HTLC(bytes32 secretHash,uint256 timeLock,uint256 sendAmount,uint256 recieveAmount)");
+        keccak256("HTLC(bytes32 secretHash,uint256 expiry,uint256 sendAmount,uint256 recieveAmount)");
 
     // Are set when the channel is created
     IERC20Upgradeable public token;
@@ -54,9 +54,15 @@ contract GardenFEEAccount is EIP712Upgradeable {
     uint256 public amount;
     uint256 public nonce;
     uint256 public expiration;
-    uint256 public secretsProvided;
+
+    mapping(bytes => uint256) public secretsClaimed;
+    mapping(bytes32 => bytes) public secrets;
 
     uint256 private constant TWO_DAYS = 2 * 7200;
+
+    function initialize() initializer external {
+        _disableInitializers();
+    }
 
     function __GardenFEEAccount_init(
         IERC20Upgradeable token_,
@@ -117,7 +123,7 @@ contract GardenFEEAccount is EIP712Upgradeable {
      * @param amount_ The amount of tokens to be claimed.
      * @param nonce_ The nonce value for the claim message.
      * @param htlcs The array of HTLCs in the claim.
-     * @param secrets The array of secrets corresponding to the HTLCs.
+     * @param secrets_ The array of secrets corresponding to the HTLCs.
      * @param funderSig The signature of the funder for the claim message.
      * @param recipientSig The signature of the recipient for the claim message.
      */
@@ -125,39 +131,52 @@ contract GardenFEEAccount is EIP712Upgradeable {
         uint256 amount_,
         uint256 nonce_,
         HTLC[] memory htlcs,
-        bytes[] memory secrets,
+        bytes[] memory secrets_,
         bytes memory funderSig,
         bytes memory recipientSig
     ) external {
-        require(htlcs.length == secrets.length, "GardenFEEAccount: invalid input");
+        require(htlcs.length == secrets_.length, "FeeAccount: invalid input");
+        require(!(htlcs.length > 0 && nonce_ == 0), "FeeAccount: zero nonce claim cannot contain htlcs");
         bytes32 claimID = claimHash(amount_, nonce_, htlcs);
 
-        uint256 localSecretsProvided = 0;
+        if (nonce == nonce_ && expiration != 0) {
+            amount_ = amount;
+        }
+
+        bool secretsProcessed = false;
+
         for (uint256 i = 0; i < htlcs.length; i++) {
-            if (htlcs[i].timeLock > block.number && sha256(secrets[i]) == htlcs[i].secretHash) {
-                localSecretsProvided++;
+            if (secretsClaimed[secrets[htlcs[i].secretHash]] > 0) {
+                if (secretsClaimed[secrets[htlcs[i].secretHash]] != nonce_) {
+                    secretsProcessed = true;
+                    secretsClaimed[secrets[htlcs[i].secretHash]] = nonce_;
+                    amount_ += htlcs[i].sendAmount;
+                    amount_ -= htlcs[i].recieveAmount;
+                }
+                continue;
+            }
+            if (htlcs[i].timeLock > block.number && sha256(secrets_[i]) == htlcs[i].secretHash) {
+                secretsProcessed = true;
+                secretsClaimed[secrets_[i]] = nonce_;
+                secrets[htlcs[i].secretHash] = secrets_[i];
                 amount_ += htlcs[i].sendAmount;
                 amount_ -= htlcs[i].recieveAmount;
             }
         }
 
-        require(amount_ <= totalAmount(), "GardenFEEAccount: invalid amount");
+        require(amount_ <= totalAmount(), "FeeAccount: invalid amount");
         if (expiration != 0) {
             // a claim exists, so should satisfy override conditions
-            require(
-                nonce_ > nonce || (nonce_ == nonce && localSecretsProvided > secretsProvided),
-                "GardenFEEAccount: override conditions not met"
-            );
+            require(nonce_ > nonce || (nonce_ == nonce && secretsProcessed), "FeeAccount: override conditions not met");
         }
 
         // verify funder and recipient signatures
         address funderSigner = claimID.recover(funderSig);
         address recipientSigner = claimID.recover(recipientSig);
-        require(funderSigner == funder, "GardenFEEAccount: invalid funder signature");
-        require(recipientSigner == recipient, "GardenFEEAccount: invalid recipient signature");
+        require(funderSigner == funder, "FeeAccount: invalid funder signature");
+        require(recipientSigner == recipient, "FeeAccount: invalid recipient signature");
 
         // update global claim state
-        secretsProvided = localSecretsProvided;
         expiration = block.number + TWO_DAYS;
         amount = amount_;
         nonce = nonce_;
@@ -200,7 +219,7 @@ contract GardenFEEAccount is EIP712Upgradeable {
                 abi.encode(
                     HTLC_TYPEHASH,
                     htlcs[i].secretHash,
-                    htlcs[i].timeLock,
+                    htlcs[i].expiry,
                     htlcs[i].sendAmount,
                     htlcs[i].recieveAmount
                 )

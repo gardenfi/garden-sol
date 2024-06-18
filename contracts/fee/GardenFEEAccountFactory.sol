@@ -42,9 +42,13 @@ contract GardenFEEAccountFactory {
 
         token = token_;
         feeManager = feeManager_;
-        template = address(new GardenFEEAccount());
+
         feeAccountName = feeAccountName_;
         feeAccountVersion = feeAccountVersion_;
+
+        GardenFEEAccount templateFeeAccount = new GardenFEEAccount();
+        templateFeeAccount.initialize();
+        template = address(templateFeeAccount);
     }
 
     /**
