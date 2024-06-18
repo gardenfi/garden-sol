@@ -39,9 +39,13 @@ contract GardenFEEAccountFactory {
     ) {
         token = token_;
         feeManager = feeManager_;
-        template = address(new GardenFEEAccount());
+
         feeAccountName = feeAccountName_;
         feeAccountVersion = feeAccountVersion_;
+
+        GardenFEEAccount templateFeeAccount = new GardenFEEAccount();
+        templateFeeAccount.initialize();
+        template = address(templateFeeAccount);
     }
 
     /**
@@ -107,7 +111,7 @@ contract GardenFEEAccountFactory {
         delete channels[recipient];
     }
 
-     /**
+    /**
      * @notice Creates a fee channel.
      * @dev The fee channel is created by deploying a clone using the template.
      * This function is only callable by the fee manager.

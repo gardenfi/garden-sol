@@ -35,6 +35,8 @@ contract GardenHTLC is EIP712 {
     bytes32 private constant _INITIATE_TYPEHASH =
         keccak256("Initiate(address redeemer,uint256 timelock,uint256 amount,bytes32 secretHash)");
 
+    bytes32 private constant _REFUND_TYPEHASH = keccak256("Refund(bytes32 orderId)");
+
     event Initiated(bytes32 indexed orderID, bytes32 indexed secretHash, uint256 amount);
     event Redeemed(bytes32 indexed orderID, bytes32 indexed secretHash, bytes secret);
     event Refunded(bytes32 indexed orderID);
@@ -194,5 +196,27 @@ contract GardenHTLC is EIP712 {
         emit Initiated(orderID, secretHash_, orders[orderID].amount);
 
         token.safeTransferFrom(initiator_, address(this), orders[orderID].amount);
+    }
+
+    /**
+     * @notice  Redeemers can let initiator refund the locked assets before expiry block number
+     * @dev     Signers cannot refund the the same order multiple times.
+     *          Funds will be SafeTransferred to the initiator.
+     *
+     * @param orderID       orderID of the htlc order
+     * @param signature     EIP712 signature provided by redeemer for instant refund.
+     */
+    function instantRefund(bytes32 orderID, bytes calldata signature) external {
+        address redeemer = _hashTypedDataV4(keccak256(abi.encode(_REFUND_TYPEHASH, orderID))).recover(signature);
+        Order storage order = orders[orderID];
+
+        require(order.redeemer == redeemer, "HTLC: invalid redeemer signature");
+        require(!order.isFulfilled, "HTLC: order fulfilled");
+
+        order.isFulfilled = true;
+
+        emit Refunded(orderID);
+
+        token.safeTransfer(order.initiator, order.amount);
     }
 }
