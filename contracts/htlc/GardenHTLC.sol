@@ -24,7 +24,7 @@ contract GardenHTLC is EIP712 {
         address initiator;
         address redeemer;
         uint256 initiatedAt;
-        uint256 expiry;
+        uint256 timelock;
         uint256 amount;
     }
 
@@ -33,7 +33,7 @@ contract GardenHTLC is EIP712 {
     mapping(bytes32 => Order) public orders;
 
     bytes32 private constant _INITIATE_TYPEHASH =
-        keccak256("Initiate(address redeemer,uint256 expiry,uint256 amount,bytes32 secretHash)");
+        keccak256("Initiate(address redeemer,uint256 timelock,uint256 amount,bytes32 secretHash)");
 
     bytes32 private constant _REFUND_TYPEHASH = keccak256("Refund(bytes32 orderId)");
 
@@ -45,19 +45,19 @@ contract GardenHTLC is EIP712 {
      * @notice  .
      * @dev     provides checks to ensure
      *              1. redeemer is not null address
-     *              3. expiry is greater than current block number
+     *              3. timelock is greater than 0
      *              4. amount is not zero
      * @param   redeemer  public address of the reedeem
-     * @param   expiry  expiry in period for the htlc order
+     * @param   timelock  timelock in period for the htlc order
      * @param   amount  amount of tokens to trade
      */
     modifier safeParams(
         address redeemer,
-        uint256 expiry,
+        uint256 timelock,
         uint256 amount
     ) {
         require(redeemer != address(0), "GardenHTLC: zero address redeemer");
-        require(expiry > 0, "GardenHTLC: zero expiry");
+        require(timelock > 0, "GardenHTLC: zero timelock");
         require(amount > 0, "GardenHTLC: zero amount");
         _;
     }
@@ -72,17 +72,17 @@ contract GardenHTLC is EIP712 {
      *          and sha256 hash should be used to support hashing methods on other non-evm chains.
      *          Signers cannot generate orders with same secret hash or override an existing order.
      * @param   redeemer  public address of the redeemer
-     * @param   expiry  expiry in period for the htlc order
+     * @param   timelock  timelock in period for the htlc order
      * @param   amount  amount of tokens to trade
      * @param   secretHash  sha256 hash of the secret used for redemtion
      **/
     function initiate(
         address redeemer,
-        uint256 expiry,
+        uint256 timelock,
         uint256 amount,
         bytes32 secretHash
-    ) external safeParams(redeemer, expiry, amount) {
-        _initiate(msg.sender, redeemer, expiry, amount, secretHash);
+    ) external safeParams(redeemer, timelock, amount) {
+        _initiate(msg.sender, redeemer, timelock, amount, secretHash);
     }
 
     /**
@@ -91,23 +91,23 @@ contract GardenHTLC is EIP712 {
      *          and sha256 hash should be used to support hashing methods on other non-evm chains.
      *          Signers cannot generate orders with same secret hash or override an existing order.
      * @param   redeemer  public address of the redeemer
-     * @param   expiry  expiry in period for the htlc order
+     * @param   timelock  timelock in period for the htlc order
      * @param   amount  amount of tokens to trade
      * @param   secretHash  sha256 hash of the secret used for redemtion
      * @param   signature  EIP712 signature provided by authorized user for iniatiation. user will be assigned as initiator
      **/
     function initiateWithSignature(
         address redeemer,
-        uint256 expiry,
+        uint256 timelock,
         uint256 amount,
         bytes32 secretHash,
         bytes calldata signature
-    ) external safeParams(redeemer, expiry, amount) {
+    ) external safeParams(redeemer, timelock, amount) {
         address initiator = _hashTypedDataV4(
-            keccak256(abi.encode(_INITIATE_TYPEHASH, redeemer, expiry, amount, secretHash))
+            keccak256(abi.encode(_INITIATE_TYPEHASH, redeemer, timelock, amount, secretHash))
         ).recover(signature);
 
-        _initiate(initiator, redeemer, expiry, amount, secretHash);
+        _initiate(initiator, redeemer, timelock, amount, secretHash);
     }
 
     /**
@@ -136,7 +136,7 @@ contract GardenHTLC is EIP712 {
     }
 
     /**
-     * @notice  Signers can refund the locked assets after expiry block number
+     * @notice  Signers can refund the locked assets after timelock block number
      * @dev     Signers cannot refund the an order before epiry block number or refund the same order
      *          multiple times.
      *          Funds will be SafeTransferred to the initiator.
@@ -147,7 +147,7 @@ contract GardenHTLC is EIP712 {
 
         require(order.redeemer != address(0), "GardenHTLC: order not initiated");
         require(!order.isFulfilled, "GardenHTLC: order fulfilled");
-        require(order.initiatedAt + order.expiry < block.number, "GardenHTLC: order not expired");
+        require(order.initiatedAt + order.timelock < block.number, "GardenHTLC: order not expired");
 
         order.isFulfilled = true;
 
@@ -166,13 +166,13 @@ contract GardenHTLC is EIP712 {
      * @param   initiator_  The address of the initiator of the atomic swap
      * @param   redeemer_   The address of the redeemer of the atomic swap
      * @param   secretHash_ The hash of the secret used for redemption
-     * @param   expiry_     The expiry block number for the atomic swap
+     * @param   timelock_     The timelock block number for the atomic swap
      * @param   amount_     The amount of tokens to be traded in the atomic swap
      */
     function _initiate(
         address initiator_,
         address redeemer_,
-        uint256 expiry_,
+        uint256 timelock_,
         uint256 amount_,
         bytes32 secretHash_
     ) internal {
@@ -188,7 +188,7 @@ contract GardenHTLC is EIP712 {
             initiator: initiator_,
             redeemer: redeemer_,
             initiatedAt: block.number,
-            expiry: expiry_,
+            timelock: timelock_,
             amount: amount_
         });
         orders[orderID] = newOrder;
