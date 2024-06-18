@@ -1,7 +1,7 @@
 import { expect } from "chai";
 import { GardenHTLC, Leaf } from "./htlc";
 import { randomBytes } from "ethers";
-import { hash160, sha256 } from "bitcoinjs-lib/src/crypto";
+import { sha256 } from "bitcoinjs-lib/src/crypto";
 import {
 	BitcoinNetwork,
 	BitcoinProvider,
@@ -11,36 +11,41 @@ import {
 import { regTestUtils } from "./regtest";
 import { toOutputScript } from "bitcoinjs-lib/src/address";
 import { Transaction } from "bitcoinjs-lib";
-import { xOnlyPubkey } from "./utils";
+import { htlcErrors } from "./errors";
 
 describe("Bitcoin GardenHTLC", () => {
+	console.log(
+		"nigiri is required to run these tests successfully. Please make sure it is running."
+	);
+
 	const secret = randomBytes(32);
 	const secretHash = sha256(Buffer.from(secret)).toString("hex");
 	const amount = 5000;
 	const fee = 1000;
 	const provider = new BitcoinProvider(BitcoinNetwork.Regtest, "http://localhost:30000");
 
-	it("should be able initiate and redeem", async () => {
-		// simulate a single htlc where initiator is alice and redeemer is bob
-
+	it("should be able initiate and redeem with secret", async () => {
 		const alice = BitcoinWallet.createRandom(provider);
 		const bob = BitcoinWallet.createRandom(provider);
 
-		const alicePubkeyHash = await pubkey(alice);
-		const bobPubkeyHash = await pubkey(bob);
+		const alicePubkey = await pubkey(alice);
+		const bobPubkey = await pubkey(bob);
 		const expiry = 7200;
 		await regTestUtils.fund(await alice.getAddress(), provider);
-		const bobHTLC = await GardenHTLC.from(
-			bob,
+		const aliceHTLC = await GardenHTLC.from(
+			alice,
 			secretHash,
-			alicePubkeyHash,
-			bobPubkeyHash,
+			alicePubkey,
+			bobPubkey,
 			expiry
 		);
-		const bobHTLCAddress = bobHTLC.address();
+		await aliceHTLC.initiate(amount, fee);
+		const bobHTLC = await GardenHTLC.from(bob, secretHash, alicePubkey, bobPubkey, expiry);
 
-		// alice sending to bob htlc address
-		await alice.send(bobHTLCAddress, amount, fee);
+		const wrongSecret = randomBytes(32);
+		await expect(
+			bobHTLC.redeem(Buffer.from(wrongSecret).toString("hex"))
+		).to.be.rejectedWith(htlcErrors.secretMismatch);
 
 		const hash = await bobHTLC.redeem(Buffer.from(secret).toString("hex"));
 
@@ -54,8 +59,8 @@ describe("Bitcoin GardenHTLC", () => {
 		const alice = BitcoinWallet.createRandom(provider);
 		const bob = BitcoinWallet.createRandom(provider);
 
-		const alicePubkeyHash = await pubkey(alice);
-		const bobPubkeyHash = await pubkey(bob);
+		const alicePubkey = await pubkey(alice);
+		const bobPubkey = await pubkey(bob);
 
 		const expiry = 7200;
 		await regTestUtils.fund(await alice.getAddress(), provider);
@@ -63,25 +68,85 @@ describe("Bitcoin GardenHTLC", () => {
 		const aliceHTLC = await GardenHTLC.from(
 			alice,
 			secretHash,
-			alicePubkeyHash,
-			bobPubkeyHash,
+			alicePubkey,
+			bobPubkey,
 			expiry
 		);
-		const aliceHTLCAddress = aliceHTLC.address();
-		const txid = await alice.send(aliceHTLCAddress, amount, fee);
+		const initTxId = await aliceHTLC.initiate(amount, fee);
 
 		const bobSigs = await generateSigsForBob(aliceHTLC, bob, await alice.getAddress(), fee);
 		expect(bobSigs).to.be.an("array");
-		expect(bobSigs[0].utxo).to.be.eq(txid);
+		expect(bobSigs[0].utxo).to.be.eq(initTxId);
 
-		const bobPubkey = xOnlyPubkey(await bob.getPublicKey()).toString("hex");
+		// corrupt the signatures and test for failure
 
-		const hash = await aliceHTLC.instantRefund(bobPubkey, bobSigs, fee);
+		let corruptedSigs = bobSigs.map((sig) => {
+			return {
+				utxo: sig.utxo,
+				sig: Buffer.from(sig.sig, "hex").reverse().toString("hex"),
+			};
+		});
+		await expect(aliceHTLC.instantRefund(corruptedSigs, fee)).to.be.rejectedWith(
+			htlcErrors.invalidCounterpartySigForUTXO(corruptedSigs[0].utxo)
+		);
+
+		// corrupt the utxo and test for failure
+		const corruptedUtxos = bobSigs.map((sig) => {
+			return {
+				utxo: "0".repeat(64),
+				sig: sig.sig,
+			};
+		});
+		// fails as the utxos used are not the same
+		await expect(aliceHTLC.instantRefund(corruptedUtxos, fee)).to.be.rejectedWith(
+			htlcErrors.counterPartySigNotFound("")
+		);
+
+		const hash = await aliceHTLC.instantRefund(bobSigs, fee);
 
 		const tx = await provider.getTransaction(hash);
 		expect(tx).to.be.an("object");
 		expect(tx.txid).to.be.eq(hash);
 		expect(tx.vout[0].scriptpubkey_address).to.be.equal(await alice.getAddress());
+	});
+
+	it("should be able to refund only after expiry", async () => {
+		const alice = BitcoinWallet.createRandom(provider);
+		const bob = BitcoinWallet.createRandom(provider);
+
+		const alicePubkey = await pubkey(alice);
+		const bobPubkey = await pubkey(bob);
+
+		const expiry = 1;
+
+		await regTestUtils.fund(await alice.getAddress(), provider);
+
+		const aliceHTLC = await GardenHTLC.from(
+			alice,
+			secretHash,
+			alicePubkey,
+			bobPubkey,
+			expiry
+		);
+
+		const txId = await aliceHTLC.initiate(amount, fee);
+
+		const tx = await provider.getTransaction(txId);
+		expect(tx).to.be.an("object");
+		expect(tx.txid).to.be.eq(txId);
+		expect(tx.vout[0].scriptpubkey_address).to.be.equal(aliceHTLC.address());
+
+		// should not be able to refund before expiry
+		await expect(aliceHTLC.refund()).to.be.rejectedWith(htlcErrors.htlcNotExpired(2));
+
+		await regTestUtils.mine(2, provider);
+
+		const hash = await aliceHTLC.refund();
+
+		const refundTx = await provider.getTransaction(hash);
+		expect(refundTx).to.be.an("object");
+		expect(refundTx.txid).to.be.eq(hash);
+		expect(refundTx.vout[0].scriptpubkey_address).to.be.equal(await alice.getAddress());
 	});
 });
 

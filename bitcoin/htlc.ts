@@ -1,13 +1,15 @@
 import { IBitcoinWallet, Urgency } from "@catalogfi/wallets";
 import * as bitcoin from "bitcoinjs-lib";
 import { toHashTree } from "bitcoinjs-lib/src/payments/bip341";
-import { taggedHash } from "bitcoinjs-lib/src/crypto";
+import { sha256, taggedHash } from "bitcoinjs-lib/src/crypto";
 import * as ecc from "tiny-secp256k1";
 import { generateInternalkey, tweakPubkey } from "./internalKey";
 import { Taptree } from "bitcoinjs-lib/src/types";
 import { LEAF_VERSION } from "./constants";
-import { assert } from "./utils";
+import { assert, xOnlyPubkey } from "./utils";
 import { serializeScript, sortLeaves } from "./utils";
+import { htlcErrors } from "./errors";
+import { BitcoinUTXO } from "@catalogfi/wallets/dist/src/lib/bitcoin/provider.interface";
 
 export enum Leaf {
 	REFUND,
@@ -15,11 +17,19 @@ export enum Leaf {
 	INSTANT_REFUND,
 }
 
-const pubkeySize = 64 as const;
-
 bitcoin.initEccLib(ecc);
 
-export class GardenHTLC {
+export interface IGardenHTLC {
+	initiate(amount: number, fee?: number): Promise<string>;
+	instantRefund(
+		counterPartySigs: { utxo: string; sig: string }[],
+		fee?: number
+	): Promise<string>;
+	redeem(secret: string, fee?: number): Promise<string>;
+	refund(fee?: number): Promise<string>;
+}
+
+export class GardenHTLC implements IGardenHTLC {
 	/**
 	 * Signer of the HTLC can be either the initiator or the redeemer
 	 */
@@ -64,8 +74,8 @@ export class GardenHTLC {
 	 * Creates a GardenHTLC instance
 	 * @param signer Bitcoin wallet of the initiator or redeemer
 	 * @param secretHash 32 bytes secret hash
-	 * @param initiatorPubkeyHash hash160 of the initiator's x-only public key without 02 or 03 prefix
-	 * @param redeemerPubkeyHash hash160 of the redeemer's x-only public key without 02 or 03 prefix
+	 * @param initiatorPubkey initiator's x-only public key without 02 or 03 prefix
+	 * @param redeemerPubkey redeemer's x-only public key without 02 or 03 prefix
 	 * @param expiry block height after which the funds can be refunded
 	 * @returns GardenHTLC instance
 	 *
@@ -76,26 +86,32 @@ export class GardenHTLC {
 	static async from(
 		signer: IBitcoinWallet,
 		secretHash: string,
-		initiatorPubkeyHash: string,
-		redeemerPubkeyHash: string,
+		initiatorPubkey: string,
+		redeemerPubkey: string,
 		expiry: number
 	): Promise<GardenHTLC> {
-		assert(secretHash.length === 64, "secret hash should be 32 bytes");
+		// trim 0x prefix if present
+		secretHash = secretHash.startsWith("0x") ? secretHash.slice(2) : secretHash;
+
+		assert(secretHash.length === 64, htlcErrors.secretHashLenMismatch);
+		// initiator and redeemer pubkey should be either x-only 32 bytes or normal 33 bytes pubkey which
+		// will be trimmed to x-only pubkey later
 		assert(
-			initiatorPubkeyHash.length === pubkeySize,
-			`initiator pubkey hash should be ${pubkeySize / 2} bytes`
+			initiatorPubkey.length === 64 || initiatorPubkey.length === 66,
+			`initiator ${htlcErrors.pubkeyLenMismatch}`
 		);
 		assert(
-			redeemerPubkeyHash.length === pubkeySize,
-			`redeemer pubkey hash should be ${pubkeySize / 2} bytes`
+			redeemerPubkey.length === 64 || redeemerPubkey.length === 66,
+			`redeemer ${htlcErrors.pubkeyLenMismatch}`
 		);
+		assert(expiry > 0, htlcErrors.zeroOrNegativeExpiry);
 
 		const network = await signer.getNetwork();
 		return new GardenHTLC(
 			signer,
 			secretHash,
-			redeemerPubkeyHash,
-			initiatorPubkeyHash,
+			xOnlyPubkey(redeemerPubkey).toString("hex"),
+			xOnlyPubkey(initiatorPubkey).toString("hex"),
 			expiry,
 			network
 		);
@@ -110,7 +126,7 @@ export class GardenHTLC {
 			network: this.network,
 			scriptTree: this.leaves() as Taptree,
 		});
-		if (!address) throw new Error("Could not generate GardenHTLC address");
+		if (!address) throw new Error(htlcErrors.htlcAddressGenerationFailed);
 		return address;
 	}
 
@@ -126,6 +142,7 @@ export class GardenHTLC {
 		const provider = await this.signer.getProvider();
 		const utxos = await provider.getUTXOs(address);
 		const balance = utxos.reduce((acc, utxo) => acc + utxo.value, 0);
+		if (balance === 0) throw new Error(`${address} ${htlcErrors.notFunded}`);
 
 		for (let i = 0; i < utxos.length; i++) {
 			tx.addInput(Buffer.from(utxos[i].txid, "hex").reverse(), utxos[i].vout);
@@ -147,30 +164,29 @@ export class GardenHTLC {
 		return bitcoin.address.toOutputScript(this.address(), this.network);
 	}
 
+	async initiate(amount: number, fee?: number): Promise<string> {
+		fee ??= await (
+			await this.signer.getProvider()
+		).suggestFee(await this.signer.getAddress(), amount, Urgency.MEDIUM);
+
+		return await this.signer.send(this.address(), amount, fee);
+	}
+
 	/**
 	 * Instantly refunds the funds to the initiator given the counterparty's signatures and pubkey
 	 *
 	 * Note: If there are multiple UTXOs being spend, there should be a signature for each UTXO in counterPartySigs
 	 */
-	async instantRefund(
-		counterPartyPubkey: string,
-		counterPartySigs: { utxo: string; sig: string }[],
-		fee?: number
-	) {
-		assert(counterPartySigs.length > 0, "counterparty signatures are required");
-		assert(
-			counterPartyPubkey.length === 64,
-			"counterparty pubkey should be x-only public key with 32 bytes"
-		);
+	async instantRefund(counterPartySigs: { utxo: string; sig: string }[], fee?: number) {
+		assert(counterPartySigs.length > 0, htlcErrors.noCounterpartySigs);
 
 		const { tx, usedUtxos } = await this.buildRawTx(fee);
-		assert(
-			usedUtxos.length === counterPartySigs.length,
-			"invalid number of signatures. Expected: " +
-				usedUtxos.length +
-				" Got: " +
-				counterPartySigs.length
-		);
+
+		for (const utxo of usedUtxos) {
+			if (!counterPartySigs.find((sig) => sig.utxo === utxo.txid)) {
+				throw new Error(htlcErrors.counterPartySigNotFound(utxo.txid));
+			}
+		}
 
 		const output = this.getOutputScript();
 
@@ -188,11 +204,22 @@ export class GardenHTLC {
 				hashType,
 				instantRefundLeafHash
 			);
+			if (
+				!ecc.verifySchnorr(
+					hash,
+					Buffer.from(this.redeemerPubkey, "hex"),
+					Buffer.from(counterPartySigs[i].sig, "hex")
+				)
+			) {
+				throw new Error(
+					htlcErrors.invalidCounterpartySigForUTXO(counterPartySigs[i].utxo)
+				);
+			}
+
 			const signature = await this.signer.signSchnorr(hash);
 			const txid = Buffer.from(tx.ins[i].hash).reverse().toString("hex");
 			const counterPartySig = counterPartySigs.find((sig) => sig.utxo === txid);
-			if (!counterPartySig)
-				throw new Error("Counterparty signature not found for utxo: " + txid);
+			if (!counterPartySig) throw new Error(htlcErrors.counterPartySigNotFound(txid));
 
 			tx.setWitness(i, [
 				Buffer.from(counterPartySig.sig, "hex"),
@@ -210,7 +237,10 @@ export class GardenHTLC {
 	 * Reveals the secret and redeems the HTLC
 	 */
 	async redeem(secret: string, fee?: number): Promise<string> {
-		assert(secret.length === 64, "secret should be 32 bytes");
+		assert(
+			sha256(Buffer.from(secret, "hex")).toString("hex") === this.secretHash,
+			htlcErrors.secretMismatch
+		);
 
 		const { tx, usedUtxos: utxos } = await this.buildRawTx(fee);
 
@@ -236,6 +266,67 @@ export class GardenHTLC {
 		// broadcast the transaction
 		const provider = await this.signer.getProvider();
 		return await provider.broadcast(tx.toHex());
+	}
+
+	/**
+	 * Refunds the funds back to the initiator if the expiry block height + 1 is reached
+	 */
+	async refund(fee?: number): Promise<string> {
+		const { tx, usedUtxos } = await this.buildRawTx(fee);
+
+		const [canRefund, needMoreBlocks] = await this.canRefund(usedUtxos);
+		if (!canRefund) {
+			throw new Error(htlcErrors.htlcNotExpired(needMoreBlocks));
+		}
+
+		const refundLeafHash = this.leafHash(Leaf.REFUND);
+
+		const values = usedUtxos.map((utxo) => utxo.value);
+		const outputs = generateOutputs(this.getOutputScript(), usedUtxos.length);
+
+		const hashType = bitcoin.Transaction.SIGHASH_DEFAULT;
+
+		for (let i = 0; i < tx.ins.length; i++) {
+			tx.ins[i].sequence = this.expiry;
+			const hash = tx.hashForWitnessV1(i, outputs, values, hashType, refundLeafHash);
+			const signature = await this.signer.signSchnorr(hash);
+
+			tx.setWitness(i, [
+				signature,
+				this.redundLeaf(),
+				this.generateControlBlockFor(Leaf.REFUND),
+			]);
+		}
+
+		const provider = await this.signer.getProvider();
+		return await provider.broadcast(tx.toHex());
+	}
+
+	/**
+	 * Given a list of UTXOs, checks if the HTLC can be refunded
+	 */
+	private async canRefund(utxos: BitcoinUTXO[]): Promise<[boolean, number]> {
+		const provider = await this.signer.getProvider();
+		const currentBlockHeight = await provider.getLatestTip();
+
+		// ensure all utxos are expired
+		for (const utxo of utxos) {
+			let needMoreBlocks = 0;
+			if (
+				utxo.status.confirmed &&
+				utxo.status.block_height + this.expiry > currentBlockHeight
+			) {
+				needMoreBlocks =
+					utxo.status.block_height + this.expiry - currentBlockHeight + 1;
+			} else if (!utxo.status.confirmed) {
+				needMoreBlocks = this.expiry + 1;
+			}
+			if (needMoreBlocks > 0) {
+				return [false, needMoreBlocks];
+			}
+		}
+
+		return [true, 0];
 	}
 
 	/**
@@ -342,7 +433,7 @@ export class GardenHTLC {
 			case Leaf.INSTANT_REFUND:
 				return [refundLeafHash, redeemLeafHash];
 			default:
-				throw new Error(`Invalid leaf: ${leaf}`);
+				throw new Error(htlcErrors.invalidLeaf);
 		}
 	}
 }
