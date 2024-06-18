@@ -134,7 +134,7 @@ abstract contract DelegateManager is BaseStaker {
         require(stake.expiry < block.number, "DelegateManager: stake not expired");
 
         uint8 multiplier = _calculateVoteMultiplier(newLockBlocks);
-        stake.expiry = block.number + newLockBlocks;
+        stake.expiry = multiplier == uint8(7) ? MAX_UINT_256 : block.number + newLockBlocks;
         stake.votes = multiplier * stake.units;
 
         stakes[stakeID] = stake;
@@ -175,6 +175,8 @@ abstract contract DelegateManager is BaseStaker {
      * @return voteCount The total number of votes delegated to the specified filler address.
      */
     function getVotes(address filler) external view returns (uint256 voteCount) {
+        _checkRole(FILLER, filler);
+
         bytes32[] memory delegates = fillers[filler].delegateStakeIDs._inner._values;
         uint256 delegateLength = delegates.length;
 

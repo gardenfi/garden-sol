@@ -26,7 +26,7 @@ contract GardenFEEAccount is EIP712Upgradeable {
 
     struct HTLC {
         bytes32 secretHash;
-        uint256 timeLock;
+        uint256 expiry;
         uint256 sendAmount;
         uint256 recieveAmount;
     }
@@ -37,12 +37,12 @@ contract GardenFEEAccount is EIP712Upgradeable {
         keccak256(
             abi.encodePacked(
                 "Claim(uint256 nonce,uint256 amount,HTLC[] htlcs)",
-                "HTLC(bytes32 secretHash,uint256 timeLock,uint256 sendAmount,uint256 recieveAmount)"
+                "HTLC(bytes32 secretHash,uint256 expiry,uint256 sendAmount,uint256 recieveAmount)"
             )
         );
 
     bytes32 private constant HTLC_TYPEHASH =
-        keccak256("HTLC(bytes32 secretHash,uint256 timeLock,uint256 sendAmount,uint256 recieveAmount)");
+        keccak256("HTLC(bytes32 secretHash,uint256 expiry,uint256 sendAmount,uint256 recieveAmount)");
 
     // Are set when the channel is created
     IERC20Upgradeable public token;
@@ -59,6 +59,10 @@ contract GardenFEEAccount is EIP712Upgradeable {
     mapping(bytes32 => bytes) public secrets;
 
     uint256 private constant TWO_DAYS = 2 * 7200;
+
+    function initialize() initializer external {
+        _disableInitializers();
+    }
 
     function __GardenFEEAccount_init(
         IERC20Upgradeable token_,
@@ -211,7 +215,7 @@ contract GardenFEEAccount is EIP712Upgradeable {
                 abi.encode(
                     HTLC_TYPEHASH,
                     htlcs[i].secretHash,
-                    htlcs[i].timeLock,
+                    htlcs[i].expiry,
                     htlcs[i].sendAmount,
                     htlcs[i].recieveAmount
                 )
