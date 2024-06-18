@@ -71,7 +71,9 @@ abstract contract FillerManager is BaseStaker {
         require(filler.deregisteredAt != 0, "FillerManager: not registered");
         require(filler.deregisteredAt + FILLER_COOL_DOWN < block.number, "FillerManager: cooldown not passed");
 
-        delete (fillers[filler_]);
+        fillers[filler_].feeInBips = 0;
+        fillers[filler_].stake = 0;
+        fillers[filler_].deregisteredAt = 0;
 
         SEED.safeTransfer(filler_, FILLER_STAKE);
 
