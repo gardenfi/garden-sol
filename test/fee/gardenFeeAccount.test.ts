@@ -296,7 +296,7 @@ describe("--- Garden Fee Account ---", () => {
 		it("User should not be able to claim with wrong number of secrets message.", async () => {
 			const currentBlock = await ethers.provider.getBlockNumber();
 			claimMessage = {
-				nonce: 0,
+				nonce: 1,
 				amount: ethers.parseEther("0.5"),
 				htlcs: [
 					{
@@ -353,7 +353,7 @@ describe("--- Garden Fee Account ---", () => {
 						davidSignature,
 						davidSignature
 					)
-			).to.be.revertedWith("GardenFEEAccount: invalid amount");
+			).to.be.revertedWith("FeeAccount: invalid amount");
 		});
 		it("User should not be able to claim with wrong funder signature", async () => {
 			await seed.transfer(davidGardenFEEAccountAddress, ethers.parseEther("1"));
@@ -368,7 +368,7 @@ describe("--- Garden Fee Account ---", () => {
 						davidSignature,
 						davidSignature
 					)
-			).to.be.revertedWith("GardenFEEAccount: invalid funder signature");
+			).to.be.revertedWith("FeeAccount: invalid funder signature");
 		});
 		it("User should not be able to claim with wrong user signature", async () => {
 			await expect(
@@ -382,7 +382,7 @@ describe("--- Garden Fee Account ---", () => {
 						feeManagerSignature,
 						feeManagerSignature
 					)
-			).to.be.revertedWith("GardenFEEAccount: invalid recipient signature");
+			).to.be.revertedWith("FeeAccount: invalid recipient signature");
 		});
 		it("User should be able to claim few htlcs", async () => {
 			await expect(
@@ -410,7 +410,7 @@ describe("--- Garden Fee Account ---", () => {
 						feeManagerSignature,
 						davidSignature
 					)
-			).to.be.revertedWith("GardenFEEAccount: override conditions not met");
+			).to.be.revertedWith("FeeAccount: override conditions not met");
 		});
 		it("User be able to claim with more number of secrets", async () => {
 			await expect(
@@ -429,7 +429,7 @@ describe("--- Garden Fee Account ---", () => {
 		it("User be able to claim with greater nonce", async () => {
 			const currentBlock = await ethers.provider.getBlockNumber();
 			claimMessage = {
-				nonce: 1,
+				nonce: 2,
 				amount: ethers.parseEther("0.5"),
 				htlcs: [
 					{
@@ -470,7 +470,7 @@ describe("--- Garden Fee Account ---", () => {
 		it("User be able to claim with greater nonce and amount equal to totalAmount", async () => {
 			const currentBlock = await ethers.provider.getBlockNumber();
 			claimMessage = {
-				nonce: 2,
+				nonce: 3,
 				amount: ethers.parseEther("0.5"),
 				htlcs: [
 					{
@@ -505,7 +505,7 @@ describe("--- Garden Fee Account ---", () => {
 		it("User be able to claim with greater nonce and amount equal to 0", async () => {
 			const currentBlock = await ethers.provider.getBlockNumber();
 			claimMessage = {
-				nonce: 3,
+				nonce: 4,
 				amount: ethers.parseEther("0.5"),
 				htlcs: [
 					{
@@ -538,7 +538,7 @@ describe("--- Garden Fee Account ---", () => {
 			).to.emit(gardenFeeAccountFactory, "Claimed");
 		});
 		it("User should be able to settle after expiration.", async () => {
-			mine((await ethers.provider.getBlockNumber()) + 14400);
+			await mine((await ethers.provider.getBlockNumber()) + 14400);
 			await expect(davidGardenFEEAccount.connect(david).settle()).to.emit(
 				gardenFeeAccountFactory,
 				"Closed"
@@ -552,7 +552,7 @@ describe("--- Garden Fee Account ---", () => {
 		let claimMessage: ClaimMessage;
 		it("User should able to createAndClaim.", async () => {
 			claimMessage = {
-				nonce: 0,
+				nonce: 1,
 				amount: ethers.parseEther("1"),
 				htlcs: [],
 			};
