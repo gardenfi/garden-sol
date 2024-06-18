@@ -14,6 +14,10 @@ import { Transaction } from "bitcoinjs-lib";
 import { htlcErrors } from "./errors";
 
 describe("Bitcoin GardenHTLC", () => {
+	console.log(
+		"nigiri is required to run these tests successfully. Please make sure it is running."
+	);
+
 	const secret = randomBytes(32);
 	const secretHash = sha256(Buffer.from(secret)).toString("hex");
 	const amount = 5000;
@@ -24,25 +28,19 @@ describe("Bitcoin GardenHTLC", () => {
 		const alice = BitcoinWallet.createRandom(provider);
 		const bob = BitcoinWallet.createRandom(provider);
 
-		const alicePubkeyHash = await pubkey(alice);
-		const bobPubkeyHash = await pubkey(bob);
+		const alicePubkey = await pubkey(alice);
+		const bobPubkey = await pubkey(bob);
 		const expiry = 7200;
 		await regTestUtils.fund(await alice.getAddress(), provider);
 		const aliceHTLC = await GardenHTLC.from(
 			alice,
 			secretHash,
-			alicePubkeyHash,
-			bobPubkeyHash,
+			alicePubkey,
+			bobPubkey,
 			expiry
 		);
 		await aliceHTLC.initiate(amount, fee);
-		const bobHTLC = await GardenHTLC.from(
-			bob,
-			secretHash,
-			alicePubkeyHash,
-			bobPubkeyHash,
-			expiry
-		);
+		const bobHTLC = await GardenHTLC.from(bob, secretHash, alicePubkey, bobPubkey, expiry);
 
 		const wrongSecret = randomBytes(32);
 		await expect(
@@ -61,8 +59,8 @@ describe("Bitcoin GardenHTLC", () => {
 		const alice = BitcoinWallet.createRandom(provider);
 		const bob = BitcoinWallet.createRandom(provider);
 
-		const alicePubkeyHash = await pubkey(alice);
-		const bobPubkeyHash = await pubkey(bob);
+		const alicePubkey = await pubkey(alice);
+		const bobPubkey = await pubkey(bob);
 
 		const expiry = 7200;
 		await regTestUtils.fund(await alice.getAddress(), provider);
@@ -70,8 +68,8 @@ describe("Bitcoin GardenHTLC", () => {
 		const aliceHTLC = await GardenHTLC.from(
 			alice,
 			secretHash,
-			alicePubkeyHash,
-			bobPubkeyHash,
+			alicePubkey,
+			bobPubkey,
 			expiry
 		);
 		const initTxId = await aliceHTLC.initiate(amount, fee);
@@ -116,8 +114,8 @@ describe("Bitcoin GardenHTLC", () => {
 		const alice = BitcoinWallet.createRandom(provider);
 		const bob = BitcoinWallet.createRandom(provider);
 
-		const alicePubkeyHash = await pubkey(alice);
-		const bobPubkeyHash = await pubkey(bob);
+		const alicePubkey = await pubkey(alice);
+		const bobPubkey = await pubkey(bob);
 
 		const expiry = 1;
 
@@ -126,8 +124,8 @@ describe("Bitcoin GardenHTLC", () => {
 		const aliceHTLC = await GardenHTLC.from(
 			alice,
 			secretHash,
-			alicePubkeyHash,
-			bobPubkeyHash,
+			alicePubkey,
+			bobPubkey,
 			expiry
 		);
 
