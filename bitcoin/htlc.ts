@@ -9,6 +9,7 @@ import { LEAF_VERSION } from "./constants";
 import { assert, xOnlyPubkey } from "./utils";
 import { serializeScript, sortLeaves } from "./utils";
 import { htlcErrors } from "./errors";
+import { BitcoinUTXO } from "@catalogfi/wallets/dist/src/lib/bitcoin/provider.interface";
 
 export enum Leaf {
 	REFUND,
@@ -273,23 +274,9 @@ export class GardenHTLC implements IGardenHTLC {
 	async refund(fee?: number): Promise<string> {
 		const { tx, usedUtxos } = await this.buildRawTx(fee);
 
-		const provider = await this.signer.getProvider();
-		const currentBlockHeight = await provider.getLatestTip();
-
-		for (const utxo of usedUtxos) {
-			let needMoreBlocks = 0;
-			if (
-				utxo.status.confirmed &&
-				utxo.status.block_height + this.expiry > currentBlockHeight
-			) {
-				needMoreBlocks =
-					utxo.status.block_height + this.expiry - currentBlockHeight + 1;
-			} else if (!utxo.status.confirmed) {
-				needMoreBlocks = this.expiry + 1;
-			}
-			if (needMoreBlocks > 0) {
-				throw new Error(htlcErrors.htlcNotExpired(needMoreBlocks));
-			}
+		const [canRefund, needMoreBlocks] = await this.canRefund(usedUtxos);
+		if (!canRefund) {
+			throw new Error(htlcErrors.htlcNotExpired(needMoreBlocks));
 		}
 
 		const refundLeafHash = this.leafHash(Leaf.REFUND);
@@ -311,7 +298,35 @@ export class GardenHTLC implements IGardenHTLC {
 			]);
 		}
 
+		const provider = await this.signer.getProvider();
 		return await provider.broadcast(tx.toHex());
+	}
+
+	/**
+	 * Given a list of UTXOs, checks if the HTLC can be refunded
+	 */
+	private async canRefund(utxos: BitcoinUTXO[]): Promise<[boolean, number]> {
+		const provider = await this.signer.getProvider();
+		const currentBlockHeight = await provider.getLatestTip();
+
+		// ensure all utxos are expired
+		for (const utxo of utxos) {
+			let needMoreBlocks = 0;
+			if (
+				utxo.status.confirmed &&
+				utxo.status.block_height + this.expiry > currentBlockHeight
+			) {
+				needMoreBlocks =
+					utxo.status.block_height + this.expiry - currentBlockHeight + 1;
+			} else if (!utxo.status.confirmed) {
+				needMoreBlocks = this.expiry + 1;
+			}
+			if (needMoreBlocks > 0) {
+				return [false, needMoreBlocks];
+			}
+		}
+
+		return [true, 0];
 	}
 
 	/**
