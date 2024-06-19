@@ -12,6 +12,7 @@
 	],
 	"author": "garden.finance",
 	"license": "MIT",
+	"packageManager": "yarn@1.22.19",
 	"devDependencies": {
 		"@nomicfoundation/hardhat-chai-matchers": "^2.0.0",
 		"@nomicfoundation/hardhat-ethers": "^3.0.0",
