@@ -14,7 +14,7 @@ import "./BaseStaker.sol";
 abstract contract FillerManager is BaseStaker {
     using SafeERC20 for IERC20;
 
-    uint16 constant MAX_FEE_IN_BIPS = 10_000;
+    uint16 constant MAX_Fee_IN_BIPS = 10_000;
 
     event FillerRegistered(address indexed filler);
     event FillerFeeUpdated(address indexed filler, uint256 fee);
@@ -83,10 +83,10 @@ abstract contract FillerManager is BaseStaker {
      * @notice Updates the fee for a registered filler.
      * @dev Only fillers with the FILLER role can call this function.
      * @param newFee The new fee in basis points (bips) to be set for the filler.
-     *              - Must be less than `MAX_FEE_IN_BIPS`.
+     *              - Must be less than `MAX_Fee_IN_BIPS`.
      */
     function updateFee(uint16 newFee) external onlyRole(FILLER) {
-        require(newFee < MAX_FEE_IN_BIPS, "FillerManager: fee too high");
+        require(newFee < MAX_Fee_IN_BIPS, "FillerManager: fee too high");
 
         fillers[_msgSender()].feeInBips = newFee;
 

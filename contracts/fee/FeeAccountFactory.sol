@@ -3,18 +3,18 @@ pragma solidity ^0.8.18;
 
 import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/ClonesUpgradeable.sol";
-import "./GardenFEEAccount.sol";
+import "./FeeAccount.sol";
 
 /**
- * @title GardenFEEAccountFactory
+ * @title FeeAccountFactory
  * @author Garden Finance
- * @notice The GardenFEEAccountFactory contract is used to deploy and manage the fee channels.
+ * @notice The FeeAccountFactory contract is used to deploy and manage the fee channels.
  * It allows the funder and recipient to create the channel.
  * @dev Name and version are set when the factory is deployed,they are to initialize the fee channel.
  * The factory deploys a template of the fee channel.
  * Clones are created by the factory.
  */
-contract GardenFEEAccountFactory {
+contract FeeAccountFactory {
     using ClonesUpgradeable for address;
 
     IERC20Upgradeable public immutable token;
@@ -25,7 +25,7 @@ contract GardenFEEAccountFactory {
     string public feeAccountVersion;
 
     mapping(address => uint256) public nonces;
-    mapping(address => GardenFEEAccount) public channels;
+    mapping(address => FeeAccount) public channels;
 
     event Claimed(address indexed channel, uint256 amount, uint256 nonce, uint256 expiration);
     event Created(address indexed funder, address indexed channel);
@@ -37,8 +37,8 @@ contract GardenFEEAccountFactory {
         string memory feeAccountName_,
         string memory feeAccountVersion_
     ) {
-        require(address(token_) != address(0), "GardenFEEAccountFactory: token is zero address");
-        require(feeManager_ != address(0), "GardenFEEAccountFactory: fee manager is zero address");
+        require(address(token_) != address(0), "FeeAccountFactory: token is zero address");
+        require(feeManager_ != address(0), "FeeAccountFactory: fee manager is zero address");
 
         token = token_;
         feeManager = feeManager_;
@@ -46,7 +46,7 @@ contract GardenFEEAccountFactory {
         feeAccountName = feeAccountName_;
         feeAccountVersion = feeAccountVersion_;
 
-        GardenFEEAccount templateFeeAccount = new GardenFEEAccount();
+        FeeAccount templateFeeAccount = new FeeAccount();
         templateFeeAccount.initialize();
         template = address(templateFeeAccount);
     }
@@ -58,7 +58,7 @@ contract GardenFEEAccountFactory {
      * @param recipientSig The signature of the recipient for the close message.
      */
     function createAndClose(uint256 amount, bytes memory funderSig, bytes memory recipientSig) external {
-        GardenFEEAccount channel = create();
+        FeeAccount channel = create();
         channel.close(amount, funderSig, recipientSig);
     }
 
@@ -74,12 +74,12 @@ contract GardenFEEAccountFactory {
     function createAndClaim(
         uint256 amount,
         uint256 nonce,
-        GardenFEEAccount.HTLC[] memory htlcs,
+        FeeAccount.HTLC[] memory htlcs,
         bytes[] memory secrets,
         bytes memory funderSig,
         bytes memory recipientSig
     ) external {
-        GardenFEEAccount channel = create();
+        FeeAccount channel = create();
         channel.claim(amount, nonce, htlcs, secrets, funderSig, recipientSig);
     }
 
@@ -97,7 +97,7 @@ contract GardenFEEAccountFactory {
      * @param amount The amount of tokens in the claim.
      */
     function claimed(address recipient, uint256 amount, uint256 nonce, uint256 expiration) external {
-        require(msg.sender == address(channels[recipient]), "GardenFEEAccountFactory: caller must be fee channel");
+        require(msg.sender == address(channels[recipient]), "FeeAccountFactory: caller must be fee channel");
 
         emit Claimed(address(channels[recipient]), amount, nonce, expiration);
     }
@@ -107,7 +107,7 @@ contract GardenFEEAccountFactory {
      * @param recipient The address of the recipient.
      */
     function closed(address recipient) external {
-        require(msg.sender == address(channels[recipient]), "GardenFEEAccountFactory: caller must be fee channel");
+        require(msg.sender == address(channels[recipient]), "FeeAccountFactory: caller must be fee channel");
 
         emit Closed(address(channels[recipient]));
 
@@ -121,8 +121,8 @@ contract GardenFEEAccountFactory {
      * @param recipient The address of the recipient.
      * @return The address of the fee channel.
      */
-    function feeManagerCreate(address recipient) external returns (GardenFEEAccount) {
-        require(msg.sender == feeManager, "GardenFEEAccountFactory: caller must be fee manager");
+    function feeManagerCreate(address recipient) external returns (FeeAccount) {
+        require(msg.sender == feeManager, "FeeAccountFactory: caller must be fee manager");
         return _create(feeManager, recipient);
     }
 
@@ -132,7 +132,7 @@ contract GardenFEEAccountFactory {
      * This function is only callable by the recipient.
      * @return The address of the fee channel.
      */
-    function create() public returns (GardenFEEAccount) {
+    function create() public returns (FeeAccount) {
         return _create(feeManager, msg.sender);
     }
 
@@ -143,18 +143,18 @@ contract GardenFEEAccountFactory {
      * @param recipient The address of the recipient.
      * @return The address of the fee channel.
      */
-    function _create(address funder, address recipient) internal returns (GardenFEEAccount) {
-        require(channels[recipient] == GardenFEEAccount(address(0)), "GardenFEEAccountFactory: fee channel exists");
+    function _create(address funder, address recipient) internal returns (FeeAccount) {
+        require(channels[recipient] == FeeAccount(address(0)), "FeeAccountFactory: fee channel exists");
         bytes32 salt = keccak256(abi.encode(token, feeManager, recipient, nonces[recipient]));
 
         nonces[recipient]++;
 
         address channel = template.cloneDeterministic(salt);
-        channels[recipient] = GardenFEEAccount(channel);
-        channels[recipient].__GardenFEEAccount_init(token, funder, recipient, feeAccountName, feeAccountVersion);
+        channels[recipient] = FeeAccount(channel);
+        channels[recipient].__FeeAccount_init(token, funder, recipient, feeAccountName, feeAccountVersion);
 
         emit Created(recipient, address(channel));
 
-        return GardenFEEAccount(channel);
+        return FeeAccount(channel);
     }
 }

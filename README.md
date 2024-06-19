@@ -12,10 +12,10 @@ The contracts are organized into the following directories, each containing rela
     - [**Flower.sol:**](./contracts/Flower.sol) This contract Follows ERC721 NFT standard and is responsible for minting Flower NFTs.
     - [**SEED.sol:**](./contracts/SEED.sol) This contract follows ERC20 standard and is the base token used across all garden decentralized applications.
 - [**fee:**](./contracts/fee/README.md)
-    - [**GardenFEEAccount.sol:**](./contracts/fee/GardenFEEAccount.sol) This contract is used to manage the funds of a channel between a funder and a recipient using `Payment Channel` Architecture along with `HTLC`.
-    - [**GardenFEEAccountFactory.sol:**](./contracts/fee/GardenFEEAccountFactory.sol) This contract is used to deploy and manage the fee channels per signer.
+    - [**FeeAccount.sol:**](./contracts/fee/FeeAccount.sol) This contract is used to manage the funds of a channel between a funder and a recipient using `Payment Channel` Architecture along with `HTLC`.
+    - [**FeeAccountFactory.sol:**](./contracts/fee/FeeAccountFactory.sol) This contract is used to deploy and manage the fee channels per signer.
 - [**htlc:**](./contracts/htlc/Readme.md)
-    - [**GardenHTLC.sol:**](./contracts/htlc/GardenHTLC.sol) This contract is used to settle an order which is committed offchain.
+    - [**HTLC.sol:**](./contracts/htlc/HTLC.sol) This contract is used to settle an order which is committed offchain.
 - [**stake:**](./contracts/stake/README.md)
     - [**BaseStaker.sol:**](./contracts/stake/BaseStaker.sol) Serves as Base Class for GardenStaker, Contains all State for FillerManager and DelegateManager.
     - [**DelegateManager.sol:**](./contracts/stake/DelegateManager.sol) This contract is responsible for managing the delegation of voting power to fillers.
