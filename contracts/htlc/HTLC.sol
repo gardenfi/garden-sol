@@ -15,7 +15,7 @@ import "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
  *                               2. refund
  *          Redeemer function: 1. redeem
  */
-contract GardenHTLC is EIP712 {
+contract HTLC is EIP712 {
     using SafeERC20 for IERC20;
     using ECDSA for bytes32;
 
@@ -56,9 +56,9 @@ contract GardenHTLC is EIP712 {
         uint256 timelock,
         uint256 amount
     ) {
-        require(redeemer != address(0), "GardenHTLC: zero address redeemer");
-        require(timelock > 0, "GardenHTLC: zero timelock");
-        require(amount > 0, "GardenHTLC: zero amount");
+        require(redeemer != address(0), "HTLC: zero address redeemer");
+        require(timelock > 0, "HTLC: zero timelock");
+        require(amount > 0, "HTLC: zero amount");
         _;
     }
 
@@ -121,12 +121,12 @@ contract GardenHTLC is EIP712 {
     function redeem(bytes32 orderID, bytes calldata secret) external {
         Order storage order = orders[orderID];
 
-        require(order.redeemer != address(0x0), "GardenHTLC: order not initiated");
-        require(!order.isFulfilled, "GardenHTLC: order fulfilled");
+        require(order.redeemer != address(0x0), "HTLC: order not initiated");
+        require(!order.isFulfilled, "HTLC: order fulfilled");
 
         bytes32 secretHash = sha256(secret);
 
-        require(sha256(abi.encode(secretHash, order.initiator)) == orderID, "GardenHTLC: incorrect secret");
+        require(sha256(abi.encode(secretHash, order.initiator)) == orderID, "HTLC: incorrect secret");
 
         order.isFulfilled = true;
 
@@ -145,9 +145,9 @@ contract GardenHTLC is EIP712 {
     function refund(bytes32 orderID) external {
         Order storage order = orders[orderID];
 
-        require(order.redeemer != address(0), "GardenHTLC: order not initiated");
-        require(!order.isFulfilled, "GardenHTLC: order fulfilled");
-        require(order.initiatedAt + order.timelock < block.number, "GardenHTLC: order not expired");
+        require(order.redeemer != address(0), "HTLC: order not initiated");
+        require(!order.isFulfilled, "HTLC: order fulfilled");
+        require(order.initiatedAt + order.timelock < block.number, "HTLC: order not expired");
 
         order.isFulfilled = true;
 
@@ -176,12 +176,12 @@ contract GardenHTLC is EIP712 {
         uint256 amount_,
         bytes32 secretHash_
     ) internal {
-        require(initiator_ != redeemer_, "GardenHTLC: same initiator and redeemer");
+        require(initiator_ != redeemer_, "HTLC: same initiator and redeemer");
 
         bytes32 orderID = sha256(abi.encode(secretHash_, initiator_));
         Order memory order = orders[orderID];
 
-        require(order.redeemer == address(0), "GardenHTLC: duplicate order");
+        require(order.redeemer == address(0), "HTLC: duplicate order");
 
         Order memory newOrder = Order({
             isFulfilled: false,

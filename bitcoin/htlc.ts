@@ -19,7 +19,7 @@ export enum Leaf {
 
 bitcoin.initEccLib(ecc);
 
-export interface IGardenHTLC {
+export interface IHTLC {
 	initiate(amount: number, fee?: number): Promise<string>;
 	instantRefund(
 		counterPartySigs: { utxo: string; sig: string }[],
@@ -29,7 +29,7 @@ export interface IGardenHTLC {
 	refund(fee?: number): Promise<string>;
 }
 
-export class GardenHTLC implements IGardenHTLC {
+export class HTLC implements IHTLC {
 	/**
 	 * Signer of the HTLC can be either the initiator or the redeemer
 	 */
@@ -71,13 +71,13 @@ export class GardenHTLC implements IGardenHTLC {
 	}
 
 	/**
-	 * Creates a GardenHTLC instance
+	 * Creates a HTLC instance
 	 * @param signer Bitcoin wallet of the initiator or redeemer
 	 * @param secretHash 32 bytes secret hash
 	 * @param initiatorPubkey initiator's x-only public key without 02 or 03 prefix
 	 * @param redeemerPubkey redeemer's x-only public key without 02 or 03 prefix
 	 * @param expiry block height after which the funds can be refunded
-	 * @returns GardenHTLC instance
+	 * @returns HTLC instance
 	 *
 	 *
 	 * Note: When the signer is the initiator, only refund and instant refund can be done
@@ -89,7 +89,7 @@ export class GardenHTLC implements IGardenHTLC {
 		initiatorPubkey: string,
 		redeemerPubkey: string,
 		expiry: number
-	): Promise<GardenHTLC> {
+	): Promise<HTLC> {
 		// trim 0x prefix if present
 		secretHash = secretHash.startsWith("0x") ? secretHash.slice(2) : secretHash;
 
@@ -107,7 +107,7 @@ export class GardenHTLC implements IGardenHTLC {
 		assert(expiry > 0, htlcErrors.zeroOrNegativeExpiry);
 
 		const network = await signer.getNetwork();
-		return new GardenHTLC(
+		return new HTLC(
 			signer,
 			secretHash,
 			xOnlyPubkey(redeemerPubkey).toString("hex"),
@@ -131,7 +131,7 @@ export class GardenHTLC implements IGardenHTLC {
 	}
 
 	/**
-	 * Builds a raw unsigned transaction with utxos from gardenHTLC address
+	 * Builds a raw unsigned transaction with utxos from htlc address
 	 * and uses signer's address as the output address
 	 */
 	private async buildRawTx(fee?: number) {
@@ -158,7 +158,7 @@ export class GardenHTLC implements IGardenHTLC {
 	}
 
 	/**
-	 * prevout script for the gardenHTLC address
+	 * prevout script for the htlc address
 	 */
 	private getOutputScript() {
 		return bitcoin.address.toOutputScript(this.address(), this.network);

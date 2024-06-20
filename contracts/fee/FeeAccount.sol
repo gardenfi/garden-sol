@@ -5,22 +5,22 @@ import "@openzeppelin/contracts-upgradeable/utils/cryptography/ECDSAUpgradeable.
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/cryptography/EIP712Upgradeable.sol";
 
-interface IGardenFEEAccountFactory {
+interface IFeeAccountFactory {
     function closed(address recipient) external;
 
     function claimed(address recipient, uint256 amount, uint256 nonce, uint256 expiration) external;
 }
 
 /**
- * @title GardenFEEAccount
+ * @title FeeAccount
  * @author Garden Finance
- * @notice The GardenFEEAccount contract is used to manage the funds of a channel between a funder and a recipient.
+ * @notice The FeeAccount contract is used to manage the funds of a channel between a funder and a recipient.
  * It allows the funder and recipient to close the channel and claim the funds.
  * It also allows the recipient to settle the channel.
  * @dev A templete of contract is deployed by the factory.
  * Clones are created by the factory.
  */
-contract GardenFEEAccount is EIP712Upgradeable {
+contract FeeAccount is EIP712Upgradeable {
     using ECDSAUpgradeable for bytes32;
     using SafeERC20Upgradeable for IERC20Upgradeable;
 
@@ -48,7 +48,7 @@ contract GardenFEEAccount is EIP712Upgradeable {
     IERC20Upgradeable public token;
     address public funder;
     address public recipient;
-    IGardenFEEAccountFactory public factory;
+    IFeeAccountFactory public factory;
 
     // Are set when a claim is made
     uint256 public amount;
@@ -60,11 +60,11 @@ contract GardenFEEAccount is EIP712Upgradeable {
 
     uint256 private constant TWO_DAYS = 2 * 7200;
 
-    function initialize() initializer external {
+    function initialize() external initializer {
         _disableInitializers();
     }
 
-    function __GardenFEEAccount_init(
+    function __FeeAccount_init(
         IERC20Upgradeable token_,
         address funder_,
         address recipient_,
@@ -72,22 +72,22 @@ contract GardenFEEAccount is EIP712Upgradeable {
         string memory feeAccountVersion
     ) external initializer {
         __EIP712_init_unchained(feeAccountName, feeAccountVersion);
-        __GardenFEEAccount_init_unchained(token_, funder_, recipient_);
+        __FeeAccount_init_unchained(token_, funder_, recipient_);
     }
 
-    function __GardenFEEAccount_init_unchained(
+    function __FeeAccount_init_unchained(
         IERC20Upgradeable token_,
         address funder_,
         address recipient_
     ) internal onlyInitializing {
-        require(address(token_) != address(0), "GardenFEEAccount: token is zero address");
-        require(funder_ != address(0), "GardenFEEAccount: funder is zero address");
-        require(recipient_ != address(0), "GardenFEEAccount: recipient is zero address");
+        require(address(token_) != address(0), "FeeAccount: token is zero address");
+        require(funder_ != address(0), "FeeAccount: funder is zero address");
+        require(recipient_ != address(0), "FeeAccount: recipient is zero address");
 
         token = token_;
         funder = funder_;
         recipient = recipient_;
-        factory = IGardenFEEAccountFactory(msg.sender);
+        factory = IFeeAccountFactory(msg.sender);
     }
 
     /**
@@ -104,14 +104,14 @@ contract GardenFEEAccount is EIP712Upgradeable {
         address funderSigner = id.recover(funderSig);
         address recipientSigner = id.recover(recipientSig);
 
-        require(funderSigner == funder, "GardenFEEAccount: invalid funder signature");
-        require(recipientSigner == recipient, "GardenFEEAccount: invalid recipient signature");
+        require(funderSigner == funder, "FeeAccount: invalid funder signature");
+        require(recipientSigner == recipient, "FeeAccount: invalid recipient signature");
 
         closeChannel(amount_);
     }
 
     /**
-     * @notice Allows a participant to claim funds from the GardenFEEAccount.
+     * @notice Allows a participant to claim funds from the FeeAccount.
      *          - The claim can only be made if the provided secrets match the corresponding HTLCs and the amount is valid.
      *          - The amount is updated to the new amount.
      *          - The nonce is updated to the new nonce.
@@ -155,7 +155,7 @@ contract GardenFEEAccount is EIP712Upgradeable {
                 }
                 continue;
             }
-            if (htlcs[i].timeLock > block.number && sha256(secrets_[i]) == htlcs[i].secretHash) {
+            if (htlcs[i].expiry > block.number && sha256(secrets_[i]) == htlcs[i].secretHash) {
                 secretsProcessed = true;
                 secretsClaimed[secrets_[i]] = nonce_;
                 secrets[htlcs[i].secretHash] = secrets_[i];
@@ -185,20 +185,20 @@ contract GardenFEEAccount is EIP712Upgradeable {
     }
 
     /**
-     * @notice Allows the recipient to settle the GardenFEEAccount.
+     * @notice Allows the recipient to settle the FeeAccount.
      *          - The amount is sent to the recipient.
      *          - The remaining amount is sent to the funder.
      *          - The recipient can only settle the channel after the expiration block.
      */
     function settle() external {
-        require(expiration > 0, "GardenFEEAccount: no claim");
-        require(expiration <= block.number, "GardenFEEAccount: claim not expired");
+        require(expiration > 0, "FeeAccount: no claim");
+        require(expiration <= block.number, "FeeAccount: claim not expired");
 
         closeChannel(amount);
     }
 
     /**
-     * @notice Returns the total amount of tokens held by the GardenFEEAccount.
+     * @notice Returns the total amount of tokens held by the FeeAccount.
      * @return The total amount of tokens.
      */
     function totalAmount() public view returns (uint256) {

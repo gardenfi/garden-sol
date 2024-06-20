@@ -184,7 +184,7 @@ describe("--- STAKING ---", () => {
 
 		it("Alice should not able to refund again.", async () => {
 			await expect(gardenStaker["refund(address)"](alice.address)).to.be.revertedWith(
-				"FillerManager: not registered"
+				"FillerManager: not deregistered"
 			);
 		});
 

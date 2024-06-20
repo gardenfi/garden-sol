@@ -1,5 +1,5 @@
 import { expect } from "chai";
-import { GardenHTLC, Leaf } from "./htlc";
+import { HTLC, Leaf } from "./htlc";
 import { randomBytes } from "ethers";
 import { sha256 } from "bitcoinjs-lib/src/crypto";
 import {
@@ -13,7 +13,7 @@ import { toOutputScript } from "bitcoinjs-lib/src/address";
 import { Transaction } from "bitcoinjs-lib";
 import { htlcErrors } from "./errors";
 
-describe("Bitcoin GardenHTLC", () => {
+describe("Bitcoin HTLC", () => {
 	console.log(
 		"nigiri is required to run these tests successfully. Please make sure it is running."
 	);
@@ -32,15 +32,9 @@ describe("Bitcoin GardenHTLC", () => {
 		const bobPubkey = await pubkey(bob);
 		const expiry = 7200;
 		await regTestUtils.fund(await alice.getAddress(), provider);
-		const aliceHTLC = await GardenHTLC.from(
-			alice,
-			secretHash,
-			alicePubkey,
-			bobPubkey,
-			expiry
-		);
+		const aliceHTLC = await HTLC.from(alice, secretHash, alicePubkey, bobPubkey, expiry);
 		await aliceHTLC.initiate(amount, fee);
-		const bobHTLC = await GardenHTLC.from(bob, secretHash, alicePubkey, bobPubkey, expiry);
+		const bobHTLC = await HTLC.from(bob, secretHash, alicePubkey, bobPubkey, expiry);
 
 		const wrongSecret = randomBytes(32);
 		await expect(
@@ -65,13 +59,7 @@ describe("Bitcoin GardenHTLC", () => {
 		const expiry = 7200;
 		await regTestUtils.fund(await alice.getAddress(), provider);
 
-		const aliceHTLC = await GardenHTLC.from(
-			alice,
-			secretHash,
-			alicePubkey,
-			bobPubkey,
-			expiry
-		);
+		const aliceHTLC = await HTLC.from(alice, secretHash, alicePubkey, bobPubkey, expiry);
 		const initTxId = await aliceHTLC.initiate(amount, fee);
 
 		const bobSigs = await generateSigsForBob(aliceHTLC, bob, await alice.getAddress(), fee);
@@ -121,13 +109,7 @@ describe("Bitcoin GardenHTLC", () => {
 
 		await regTestUtils.fund(await alice.getAddress(), provider);
 
-		const aliceHTLC = await GardenHTLC.from(
-			alice,
-			secretHash,
-			alicePubkey,
-			bobPubkey,
-			expiry
-		);
+		const aliceHTLC = await HTLC.from(alice, secretHash, alicePubkey, bobPubkey, expiry);
 
 		const txId = await aliceHTLC.initiate(amount, fee);
 
@@ -155,16 +137,16 @@ const pubkey = async (wallet: IBitcoinWallet) => {
 };
 
 const generateSigsForBob = async (
-	gardenHTLC: GardenHTLC,
+	htlc: HTLC,
 	bob: IBitcoinWallet,
 	initiatorAddress: string,
 	fee: number
 ) => {
 	const network = await bob.getNetwork();
-	const output = toOutputScript(gardenHTLC.address(), network);
+	const output = toOutputScript(htlc.address(), network);
 	const provider = await bob.getProvider();
 
-	const utxos = await provider.getUTXOs(gardenHTLC.address());
+	const utxos = await provider.getUTXOs(htlc.address());
 
 	const tx = new Transaction();
 	tx.version = 2;
@@ -189,7 +171,7 @@ const generateSigsForBob = async (
 			outputs,
 			values,
 			hashType,
-			gardenHTLC.leafHash(Leaf.INSTANT_REFUND)
+			htlc.leafHash(Leaf.INSTANT_REFUND)
 		);
 		const signature = await bob.signSchnorr(hash);
 		sigs.push({

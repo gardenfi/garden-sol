@@ -31,7 +31,7 @@ const errors = {
  * Uses Standard ECDSA secp256k1 curve's G point
  */
 export function generateInternalkey() {
-	const hash = sha256(Buffer.from("GardenHTLC", "utf-8"));
+	const hash = sha256(Buffer.from("HTLC", "utf-8"));
 	const R = ecc.pointMultiply(Buffer.concat([Buffer.from("04", "hex"), G]), hash);
 
 	if (!R) {
