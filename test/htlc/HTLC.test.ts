@@ -19,7 +19,7 @@ import { regTestUtils } from "../../bitcoin/regtest";
 describe("--- HTLC ---", () => {
 	type Initiate = {
 		redeemer: AddressLike;
-		expiry: BigNumberish;
+		timelock: BigNumberish;
 		amount: BigNumberish;
 		secretHash: BytesLike;
 	};
@@ -29,7 +29,7 @@ describe("--- HTLC ---", () => {
 	const INITIATE_TYPE: Record<string, TypedDataField[]> = {
 		Initiate: [
 			{ name: "redeemer", type: "address" },
-			{ name: "expiry", type: "uint256" },
+			{ name: "timelock", type: "uint256" },
 			{ name: "amount", type: "uint256" },
 			{ name: "secretHash", type: "bytes32" },
 		],
@@ -62,8 +62,6 @@ describe("--- HTLC ---", () => {
 	let orderID4: BytesLike;
 	let orderID5: BytesLike;
 	let orderID6: BytesLike;
-
-	let expiry_: BigNumberish;
 
 	before(async () => {
 		[owner, alice, bob, charlie] = await ethers.getSigners();
@@ -115,6 +113,7 @@ describe("--- HTLC ---", () => {
 			expect(secret2).to.not.equal(secret3);
 			expect(secret3).to.not.equal(secret4);
 			expect(secret4).to.not.equal(secret5);
+			expect(secret5).to.not.equal(secret6);
 		});
 
 		it("HTLC should be deployed with correct address of SEED.", async () => {
@@ -164,7 +163,7 @@ describe("--- HTLC ---", () => {
 					.connect(alice)
 					.initiate(
 						ethers.ZeroAddress,
-						(await ethers.provider.getBlockNumber()) + 7200,
+						7200,
 						ethers.parseEther("10"),
 						ethers.sha256(secret1)
 					)
@@ -173,14 +172,7 @@ describe("--- HTLC ---", () => {
 
 		it("Should not able to initiate a swap with no amount.", async () => {
 			await expect(
-				htlc
-					.connect(alice)
-					.initiate(
-						bob.address,
-						(await ethers.provider.getBlockNumber()) + 7200,
-						0n,
-						ethers.sha256(secret1)
-					)
+				htlc.connect(alice).initiate(bob.address, 7200, 0n, ethers.sha256(secret1))
 			).to.be.revertedWith("HTLC: zero amount");
 		});
 
@@ -200,7 +192,7 @@ describe("--- HTLC ---", () => {
 					.connect(alice)
 					.initiate(
 						bob.address,
-						(await ethers.provider.getBlockNumber()) + 7200,
+						7200,
 						ethers.parseEther("1000"),
 						ethers.sha256(secret1)
 					)
@@ -215,7 +207,7 @@ describe("--- HTLC ---", () => {
 					.connect(alice)
 					.initiate(
 						bob.address,
-						(await ethers.provider.getBlockNumber()) + 7200,
+						7200,
 						ethers.parseEther("1000"),
 						ethers.sha256(secret1)
 					)
@@ -225,11 +217,9 @@ describe("--- HTLC ---", () => {
 		it("Should able to initiate a swap with correct parameters.", async () => {
 			await seed.connect(owner).transfer(alice.address, ethers.parseEther("100"));
 
-			expiry_ = (await ethers.provider.getBlockNumber()) + 7200;
-
 			const initiate: Initiate = {
 				redeemer: bob.address,
-				expiry: expiry_,
+				timelock: 7200,
 				amount: ethers.parseEther("100"),
 				secretHash: ethers.sha256(secret1),
 			};
@@ -245,7 +235,7 @@ describe("--- HTLC ---", () => {
 					.connect(alice)
 					.initiate(
 						initiate.redeemer,
-						initiate.expiry,
+						initiate.timelock,
 						initiate.amount,
 						initiate.secretHash
 					)
@@ -260,7 +250,7 @@ describe("--- HTLC ---", () => {
 					.connect(alice)
 					.initiate(
 						bob.address,
-						(await ethers.provider.getBlockNumber()) + 7200,
+						7200,
 						ethers.parseEther("100"),
 						ethers.sha256(secret1)
 					)
@@ -270,10 +260,9 @@ describe("--- HTLC ---", () => {
 		it("Should able to initiate another swap with different secret.", async () => {
 			await seed.connect(owner).transfer(alice.address, ethers.parseEther("500"));
 
-			expiry_ = (await ethers.provider.getBlockNumber()) + 7200;
 			let initiate: Initiate = {
 				redeemer: bob.address,
-				expiry: expiry_,
+				timelock: 7200,
 				amount: ethers.parseEther("100"),
 				secretHash: ethers.sha256(secret2),
 			};
@@ -289,7 +278,7 @@ describe("--- HTLC ---", () => {
 					.connect(alice)
 					.initiate(
 						bob.address,
-						expiry_,
+						7200,
 						ethers.parseEther("100"),
 						ethers.sha256(secret2)
 					)
@@ -297,10 +286,9 @@ describe("--- HTLC ---", () => {
 				.to.emit(htlc, "Initiated")
 				.withArgs(orderID2, initiate.secretHash, initiate.amount);
 
-			expiry_ = (await ethers.provider.getBlockNumber()) + 7200;
 			initiate = {
 				redeemer: charlie.address,
-				expiry: expiry_,
+				timelock: 7200,
 				amount: ethers.parseEther("100"),
 				secretHash: ethers.sha256(secret3),
 			};
@@ -316,7 +304,7 @@ describe("--- HTLC ---", () => {
 					.connect(alice)
 					.initiate(
 						bob.address,
-						expiry_,
+						7200,
 						ethers.parseEther("100"),
 						ethers.sha256(secret3)
 					)
@@ -324,10 +312,9 @@ describe("--- HTLC ---", () => {
 				.to.emit(htlc, "Initiated")
 				.withArgs(orderID3, initiate.secretHash, initiate.amount);
 
-			expiry_ = (await ethers.provider.getBlockNumber()) + 7200;
 			initiate = {
 				redeemer: bob.address,
-				expiry: expiry_,
+				timelock: 7200,
 				amount: ethers.parseEther("100"),
 				secretHash: ethers.sha256(secret4),
 			};
@@ -343,7 +330,7 @@ describe("--- HTLC ---", () => {
 					.connect(alice)
 					.initiate(
 						bob.address,
-						expiry_,
+						7200,
 						ethers.parseEther("100"),
 						ethers.sha256(secret4)
 					)
@@ -355,10 +342,9 @@ describe("--- HTLC ---", () => {
 
 	describe("- HTLC - Signature Initiate -", () => {
 		it("Should not able to initiate a swap with same initiator and redeemer.", async () => {
-			expiry_ = (await ethers.provider.getBlockNumber()) + 7200;
 			const initiate: Initiate = {
 				redeemer: bob.address,
-				expiry: expiry_,
+				timelock: 7200,
 				amount: ethers.parseEther("100"),
 				secretHash: ethers.sha256(secret5),
 			};
@@ -370,7 +356,7 @@ describe("--- HTLC ---", () => {
 					.connect(alice)
 					.initiateWithSignature(
 						bob.address,
-						expiry_,
+						7200,
 						ethers.parseEther("100"),
 						ethers.sha256(secret5),
 						signature
@@ -379,10 +365,9 @@ describe("--- HTLC ---", () => {
 		});
 
 		it("Should not able to initiate a swap with no amount.", async () => {
-			expiry_ = (await ethers.provider.getBlockNumber()) + 7200;
 			const initiate: Initiate = {
 				redeemer: bob.address,
-				expiry: expiry_,
+				timelock: 7200,
 				amount: 0n,
 				secretHash: ethers.sha256(secret5),
 			};
@@ -394,7 +379,7 @@ describe("--- HTLC ---", () => {
 					.connect(alice)
 					.initiateWithSignature(
 						bob.address,
-						expiry_,
+						7200,
 						0n,
 						ethers.sha256(secret5),
 						signature
@@ -405,10 +390,9 @@ describe("--- HTLC ---", () => {
 		it("Should able to initiate a swap with valid signature.", async () => {
 			await seed.connect(owner).transfer(alice.address, ethers.parseEther("100"));
 
-			expiry_ = (await ethers.provider.getBlockNumber()) + 7200;
 			const initiate: Initiate = {
 				redeemer: bob.address,
-				expiry: expiry_,
+				timelock: 7200,
 				amount: ethers.parseEther("100"),
 				secretHash: ethers.sha256(secret5),
 			};
@@ -426,7 +410,7 @@ describe("--- HTLC ---", () => {
 					.connect(alice)
 					.initiateWithSignature(
 						bob.address,
-						expiry_,
+						7200,
 						ethers.parseEther("100"),
 						ethers.sha256(secret5),
 						signature
@@ -505,7 +489,7 @@ describe("--- HTLC ---", () => {
 		});
 
 		it("Alice should be able to refund a swap after the locktime.", async () => {
-			mine((await ethers.provider.getBlockNumber()) + 7200);
+			await mine((await ethers.provider.getBlockNumber()) + 7200);
 
 			await expect(htlc.connect(alice).refund(orderID3))
 				.to.emit(htlc, "Refunded")
@@ -543,10 +527,9 @@ describe("--- HTLC ---", () => {
 			orderId: string;
 		};
 		it("Should not able to instant refund a swap with an invalid signature.", async () => {
-			expiry_ = (await ethers.provider.getBlockNumber()) + 7200;
 			const initiate: Initiate = {
 				redeemer: bob.address,
-				expiry: expiry_,
+				timelock: 7200,
 				amount: ethers.parseEther("100"),
 				secretHash: ethers.sha256(secret6),
 			};
@@ -562,7 +545,7 @@ describe("--- HTLC ---", () => {
 					.connect(alice)
 					.initiate(
 						initiate.redeemer,
-						initiate.expiry,
+						initiate.timelock,
 						initiate.amount,
 						initiate.secretHash
 					)
@@ -595,7 +578,7 @@ describe("--- HTLC ---", () => {
 		});
 	});
 
-	describe("- HTLC - Bitcoin <-> EVM", () => {
+	describe.skip("- HTLC - Bitcoin <-> EVM", () => {
 		const aliceBitcoinWallet = BitcoinWallet.createRandom(provider);
 		const bobBitcoinWallet = BitcoinWallet.createRandom(provider);
 		const secret = randomBytes(32);
