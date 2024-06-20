@@ -41,6 +41,7 @@
 		"@openzeppelin/contracts": "^4.9.5",
 		"@openzeppelin/contracts-upgradeable": "^4.9.5",
 		"bitcoinjs-lib": "^6.1.6",
+		"dotenv": "^16.4.5",
 		"ecpair": "^2.1.0",
 		"tiny-secp256k1": "^2.2.3",
 		"varuint-bitcoin": "^1.1.2"
