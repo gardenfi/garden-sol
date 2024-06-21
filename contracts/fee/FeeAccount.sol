@@ -60,7 +60,7 @@ contract FeeAccount is EIP712Upgradeable {
 
     uint256 private constant TWO_DAYS = 2 * 7200;
 
-    function initialize() external initializer {
+    constructor() {
         _disableInitializers();
     }
 

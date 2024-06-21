@@ -47,7 +47,6 @@ contract FeeAccountFactory {
         feeAccountVersion = feeAccountVersion_;
 
         FeeAccount templateFeeAccount = new FeeAccount();
-        templateFeeAccount.initialize();
         template = address(templateFeeAccount);
     }
 
