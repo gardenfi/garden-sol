@@ -1,5 +1,7 @@
 FROM node:latest
 
+EXPOSE 8545:8545
+
 WORKDIR /app
 
 COPY package.json yarn.lock /app/
@@ -16,4 +18,3 @@ CMD npx hardhat node & \
     fi && \
     tail -f /dev/null
 
-EXPOSE 8545:8545
