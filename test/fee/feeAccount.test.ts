@@ -6,7 +6,6 @@ import type { FeeAccount, FeeAccountFactory, SEED } from "../../typechain-types"
 import type { TypedDataDomain, BigNumberish, TypedDataField, AddressLike } from "ethers";
 import { randomBytes } from "crypto";
 import { mine } from "@nomicfoundation/hardhat-network-helpers";
-import { fee } from "../../typechain-types/contracts";
 
 describe("--- Garden Fee Account ---", () => {
 	type ClaimMessage = {
@@ -758,27 +757,23 @@ describe("--- Garden Fee Account ---", () => {
 				htlcs: [],
 			};
 
-			const aliceSignature = await alice.signTypedData(
-				aliceDOMAIN,
-				CLAIM_TYPES,
-				claimMessage
-			);
+			const bobSignature = await bob.signTypedData(bobDOMAIN, CLAIM_TYPES, claimMessage);
 			const feeManagerSignature = await feeManager.signTypedData(
-				aliceDOMAIN,
+				bobDOMAIN,
 				CLAIM_TYPES,
 				claimMessage
 			);
 
 			await expect(
-				aliceFeeAccount
-					.connect(alice)
+				bobFeeAccount
+					.connect(bob)
 					.claim(
 						claimMessage.amount,
 						claimMessage.nonce,
 						claimMessage.htlcs,
 						[],
 						feeManagerSignature,
-						aliceSignature
+						bobSignature
 					)
 			).to.not.be.reverted;
 		});
