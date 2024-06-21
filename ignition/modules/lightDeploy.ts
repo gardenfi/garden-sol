@@ -1,7 +1,7 @@
 import { buildModule } from "@nomicfoundation/hardhat-ignition/modules";
 
 export default buildModule("LightDeploy", (m) => {
-	const deployer = m.getAccount(Math.floor(Math.random() * 18) + 2);
+	const deployer = m.getAccount(0);
 
 	const WBTC = m.contract("WBTC", []);
 
