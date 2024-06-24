@@ -1,6 +1,6 @@
 FROM node:latest
 
-EXPOSE 8545:8545
+EXPOSE 8545
 
 WORKDIR /app
 
