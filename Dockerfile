@@ -12,9 +12,9 @@ COPY . /app
 CMD npx hardhat node & \
     sleep 5 && \
     if [ "$LIGHT" = "true" ]; then \
-    yes | npx hardhat ignition deploy ignition/modules/lightDeploy.ts --network docker ; \
+    yes | npx hardhat ignition deploy ignition/modules/lightDeploy.ts --network docker --reset; \
     else \
-    yes | npx hardhat ignition deploy ignition/modules/fullDeploy.ts --network docker ; \
+    yes | npx hardhat ignition deploy ignition/modules/fullDeploy.ts --network docker --reset; \
     fi && \
     tail -f /dev/null
 
