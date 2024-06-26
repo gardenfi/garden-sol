@@ -40,6 +40,10 @@ Now that you have all the prerequisites installed, you can setup Garden locally.
 
 ### Setup
 
+Garden can be setup locally using Hardhat Network or Docker. You can choose the method that suits you best.
+
+Note: The Docker method is recommended for users who do not want to install the prerequisites on their local machine.
+
 #### Hardhat Network
 
 ```bash
@@ -72,6 +76,8 @@ docker run -it garden-sol
 ```
 
 ### Testing
+
+Garden has a comprehensive test suite that covers all the Smart Contracts and Bitcoin Scripts. It ensures that the code is working as expected and there are no regressions.
 
 ```bash
 # Clone the repository
