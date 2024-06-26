@@ -12,7 +12,8 @@ layer for bitcoin</p>
 
 ## About Repository
 
-This repository contains the Smart Contracts and Bitcoin scripts for Garden Finance. The Garden blockchain assets are building blocks for the Garden ecosystem, enabling **cross-chain atomic swaps**, **SEED staking** and **off-chain payment channels**. All the Smart Contracts are written in Solidity and Bitcoin Scripts are written in TypeScript. The Garden blockchain assets are organized into the following directories with logical separation as per their functionality:  
+This repository contains the Smart Contracts and Bitcoin scripts for Garden Finance. The Garden blockchain assets are building blocks for the Garden ecosystem, enabling **cross-chain atomic swaps**, **SEED staking** and **off-chain payment channels**. All the Smart Contracts are written in Solidity and Bitcoin Scripts are written in TypeScript. The Garden blockchain assets are organized into the following directories with logical separation as per their functionality:
+
 `bitcoin/`: Bitcoin Scripts for Atomic Swaps.  
 `contracts/`: Smart Contracts for SEED token and Garden NFT.  
 `contracts/stake/`: Smart Contracts for SEED staking.  
