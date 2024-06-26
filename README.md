@@ -42,7 +42,7 @@ Now that you have all the prerequisites installed, you can setup Garden locally.
 
 Garden can be setup locally using Hardhat Network or Docker. You can choose the method that suits you best.
 
-Note: The Docker method is recommended for users who do not want to install the prerequisites on their local machine.
+> The Docker method is recommended for users who do not want to install the prerequisites on their local machine.
 
 #### Hardhat Network
 
