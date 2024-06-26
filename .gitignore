@@ -5,7 +5,8 @@
 # Hardhat files
 /cache
 /artifacts
-/ignition/deployments
+/ignition/deployments/*
+!/ignition/deployments/chain-11155111
 
 # TypeChain files
 /typechain
