@@ -11,6 +11,7 @@
 # TypeChain files
 /typechain
 /typechain-types
+/go
 
 # solidity-coverage files
 /coverage

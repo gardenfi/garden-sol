@@ -3,6 +3,7 @@ import { HardhatUserConfig } from "hardhat/config";
 import "@nomicfoundation/hardhat-toolbox";
 import "@nomicfoundation/hardhat-ignition-ethers";
 import "@nomicfoundation/hardhat-verify";
+import "@solarity/hardhat-gobind";
 
 const config: HardhatUserConfig = {
 	solidity: "0.8.18",
@@ -34,6 +35,15 @@ const config: HardhatUserConfig = {
 			},
 		],
 	},
+	gobind: {
+		outdir: "./go/bindings",
+		deployable: false,
+		runOnCompile: true,
+		verbose: false,
+		onlyFiles: [],
+		skipFiles: [],
+	  },
+	
 };
 
 export default config;
