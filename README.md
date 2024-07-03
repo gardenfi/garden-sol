@@ -1,7 +1,7 @@
 # Garden Finance - Blockchain Assets
 
 <div align="center">
-    <img src="./.github/assets/garden_logomark.svg" alt="GitKeeper logo" width="256px">
+    <img src="./.github/assets/garden_logomark.svg" alt="GitKeeper logo" width="128px">
     <p>the first instant liquidity
 layer for bitcoin</p>
 </div>
