@@ -1,7 +1,7 @@
 # Garden Finance - Blockchain Assets
 
 <div align="center">
-    <img src="./.github/assets/garden_horizontal_white.svg" alt="GitKeeper logo" width="256px">
+    <img src="./.github/assets/garden_logomark.svg" alt="GitKeeper logo" width="256px">
     <p>the first instant liquidity
 layer for bitcoin</p>
 </div>
@@ -93,10 +93,6 @@ npx hardhat test
 # Run the coverage (optional)
 npx hardhat coverage
 ```
-
-## Contributing
-
-If you would like to contribute to Garden, please take a look at our [Contributing Guidelines](./CONTRIBUTING.md).
 
 ## Security
 
