@@ -28,7 +28,7 @@ describe("--- Garden Fee Account - integration tests with htlc ---", () => {
 		],
 		HTLC: [
 			{ name: "secretHash", type: "bytes32" },
-			{ name: "timelock", type: "uint256" },
+			{ name: "expiry", type: "uint256" },
 			{ name: "sendAmount", type: "uint256" },
 			{ name: "recieveAmount", type: "uint256" },
 		],
@@ -241,7 +241,7 @@ describe("--- Garden Fee Account - integration tests with htlc ---", () => {
 				htlcs: [
 					{
 						secretHash: ethers.sha256(HTLC_SECRET),
-						timelock: 1000,
+						expiry: 1000,
 						sendAmount: 2000,
 						recieveAmount: 0,
 					},
@@ -251,14 +251,14 @@ describe("--- Garden Fee Account - integration tests with htlc ---", () => {
 				.connect(alice)
 				.approve(htlc.target.toString(), FeeMANAGER_HTLC_MSG.htlcs[0].sendAmount);
 
-			const timelock =
-				(FeeMANAGER_HTLC_MSG.htlcs[0].timelock as number) -
+			const expiry =
+				(FeeMANAGER_HTLC_MSG.htlcs[0].expiry as number) -
 				(await ethers.provider.getBlockNumber());
 
 			await expect(
 				htlc.connect(alice).initiate(
 					feeAccount.target.toString(),
-					Math.floor(timelock / 2), // atomic swap time lock is 50% of time lock of initiator
+					Math.floor(expiry / 2), // atomic swap time lock is 50% of time lock of initiator
 					FeeMANAGER_HTLC_MSG.htlcs[0].sendAmount,
 					FeeMANAGER_HTLC_MSG.htlcs[0].secretHash
 				)
@@ -409,7 +409,7 @@ describe("--- Garden Fee Account - integration tests with htlc ---", () => {
 				htlcs: [
 					{
 						secretHash: ethers.sha256(HTLC_SECRET),
-						timelock: 1000,
+						expiry: 1000,
 						sendAmount: 0,
 						recieveAmount: 500,
 					} as FeeAccount.HTLCStruct,
@@ -448,14 +448,14 @@ describe("--- Garden Fee Account - integration tests with htlc ---", () => {
 				.connect(feeManager)
 				.approve(htlc.target.toString(), ALICE_HTLC_MSG.htlcs[0].recieveAmount);
 
-			const timelock =
-				(ALICE_HTLC_MSG.htlcs[0].timelock as number) -
+			const expiry =
+				(ALICE_HTLC_MSG.htlcs[0].expiry as number) -
 				(await ethers.provider.getBlockNumber());
 
 			await expect(
 				htlc.connect(feeManager).initiate(
 					alice.address,
-					Math.floor(timelock / 2), // atomic swap time lock is 50% of time lock of initiator
+					Math.floor(expiry / 2), // atomic swap time lock is 50% of time lock of initiator
 					ALICE_HTLC_MSG.htlcs[0].recieveAmount,
 					ALICE_HTLC_MSG.htlcs[0].secretHash
 				)
