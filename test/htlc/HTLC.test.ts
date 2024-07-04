@@ -578,7 +578,7 @@ describe("--- HTLC ---", () => {
 		});
 	});
 
-	describe.skip("- HTLC - Bitcoin <-> EVM", () => {
+	describe("- HTLC - Bitcoin <-> EVM", () => {
 		const aliceBitcoinWallet = BitcoinWallet.createRandom(provider);
 		const bobBitcoinWallet = BitcoinWallet.createRandom(provider);
 		const secret = randomBytes(32);
